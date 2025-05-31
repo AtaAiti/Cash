@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:cash_flip_app/providers/transactions_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cash_flip_app/services/api_service.dart';
@@ -47,19 +48,44 @@ class Account {
 
   // Создание объекта из Map, полученного от API
   factory Account.fromJson(Map<String, dynamic> json) {
+    // Отладка: какие значения приходят
+    print(
+      'DEBUG Account.fromJson: input currency="${json['currency']}", input accountType="${json['accountType']}"',
+    );
+
+    // Нормализуем валюту при создании аккаунта из JSON
+    String normalizedCurrency = json['currency'];
+    if (normalizedCurrency == 'â½' || normalizedCurrency == 'Ñ\$') {
+      normalizedCurrency = '₽';
+    }
+
+    // Нормализуем тип счета
+    String normalizedAccountType = json['accountType'];
+    if (normalizedAccountType == 'Ð¾Ð±ÑÑÐ½ÑÐ¹') {
+      normalizedAccountType = 'обычный';
+    }
+    // Добавьте здесь другие варианты нормализации для accountType, если они есть,
+    // например, для "накопительный", если он тоже приходит в искаженной кодировке.
+
+    // Отладка: какие значения получились после нормализации
+    print(
+      'DEBUG Account.fromJson: output currency="$normalizedCurrency", output accountType="$normalizedAccountType"',
+    );
+
     return Account(
       id: json['id'].toString(),
       name: json['name'],
-      accountType: json['accountType'],
+      accountType:
+          normalizedAccountType, // Используем нормализованный тип счета
       balance:
           (json['balance'] is int)
               ? (json['balance'] as int).toDouble()
               : double.parse(json['balance'].toString()),
-      currency: json['currency'],
+      currency: normalizedCurrency, // Используем нормализованную валюту
       icon: IconData(json['iconCode'] ?? 0xe39d, fontFamily: 'MaterialIcons'),
       color: Color(json['colorValue'] ?? 0xFF2196F3),
       isMain: json['isMain'] ?? false,
-      description: json['description'], // Добавляем это поле
+      description: json['description'],
     );
   }
 }
@@ -100,33 +126,37 @@ class AccountsProvider with ChangeNotifier {
   Future<void> loadData() async {
     _isLoading = true;
     _error = null;
-    _accounts =
-        []; // <<< ВАЖНОЕ ИЗМЕНЕНИЕ: Очищаем список счетов в памяти перед загрузкой
-    notifyListeners(); // Уведомляем UI, что данные очищаются/перезагружаются
-
+    _accounts = [];
+    print('DEBUG: Starting to load accounts data');
+    notifyListeners();
     try {
-      // Сначала пробуем загрузить с сервера
+      // Server data loading
+      print('DEBUG: Attempting to fetch accounts from server');
       final accountsDataFromServer = await _apiService.getAccounts();
+      print('DEBUG: Server returned ${accountsDataFromServer.length} accounts');
 
       if (accountsDataFromServer.isNotEmpty) {
         _accounts =
             accountsDataFromServer
                 .map<Account>((json) => Account.fromJson(json))
                 .toList();
-        await saveData(); // Сохраняем свежие данные с сервера в SharedPreferences
+        print('DEBUG: Loaded ${_accounts.length} accounts from server');
+        await saveData();
       } else {
-        // Сервер не вернул счетов для этого пользователя (например, новый пользователь).
-        // _accounts уже пуст после очистки в начале метода.
-        // Сохраняем пустой список в SharedPreferences, чтобы очистить старые локальные данные.
-        await saveData(); // Это сохранит пустой список _accounts
+        print('DEBUG: No accounts returned from server, checking local data');
+        await _loadLocalData();
       }
     } catch (e) {
-      print('Error loading accounts from API: $e');
-      _error = 'Failed to load accounts from server. Clearing local data.';
-      _accounts = []; // Очищаем счета при ошибке API
-      await saveData(); // Сохраняем пустой список, чтобы очистить локальные данные при ошибке
+      print('ERROR: Failed to load accounts from API: $e');
+      _error = 'Failed to load accounts from server. Checking local data.';
+      await _loadLocalData();
     } finally {
       _isLoading = false;
+      print(
+        'DEBUG: Accounts loading complete. Accounts count: ${_accounts.length}',
+      );
+      print('DEBUG: Account IDs: ${_accounts.map((a) => a.id).toList()}');
+      print('DEBUG: Account names: ${_accounts.map((a) => a.name).toList()}');
       notifyListeners();
     }
   }
@@ -206,52 +236,72 @@ class AccountsProvider with ChangeNotifier {
   }
 
   // Добавление счета
-  Future<void> addAccount(dynamic accountData, {BuildContext? context}) async {
+  Future<void> addAccount(Account account, [BuildContext? context]) async {
+    _isLoading = true;
+    notifyListeners();
+
     try {
-      // Проверяем, является ли accountData объектом Account
-      if (accountData is Account) {
-        // Добавляем существующий Account объект в список
-        _accounts.add(accountData);
-        notifyListeners();
-        saveData();
-        return;
-      }
+      print('DEBUG: Attempting to add account to server: ${account.name}');
 
-      // Явное приведение к Map<String, dynamic>
-      final accountMap = accountData as Map<String, dynamic>;
-      final accountWithoutId = Map<String, dynamic>.from(accountMap);
-      accountWithoutId.remove('id');
-
-      // Добавляем преобразование для иконки и цвета
-      accountWithoutId['iconCode'] = accountMap['icon'].codePoint;
-      accountWithoutId['colorValue'] = accountMap['color'].value;
-
-      final result = await _apiService.createAccount(accountWithoutId);
-
-      // Используем возвращенный ID от сервера
-      final newAccount = Account(
-        id: result['id'].toString(),
-        name: result['name'],
-        accountType: result['accountType'],
-        balance: result['balance'],
-        currency: result['currency'],
-        isMain: result['isMain'] ?? false,
-        icon: IconData(result['iconCode'] ?? 0, fontFamily: 'MaterialIcons'),
-        color: Color(result['colorValue'] ?? 0xFF2196F3),
-        description: result['description'], // Добавляем это поле
+      // Добавляем счет локально сразу для лучшего UX
+      final tempAccount = Account(
+        id: account.id,
+        name: account.name,
+        accountType: account.accountType,
+        balance: account.balance,
+        currency: account.currency,
+        icon: account.icon,
+        color: account.color,
+        isMain: account.isMain,
+        description: account.description,
       );
 
-      _accounts.add(newAccount);
-      notifyListeners();
-      saveData();
-    } catch (e) {
-      print('Error adding account: $e');
-      // Check if context was provided before using it
-      if (context != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка при добавлении счета: $e')),
+      _accounts.add(tempAccount);
+      notifyListeners(); // Обновляем UI с временным счетом
+
+      // Отправляем на сервер
+      final result = await _apiService.createAccount(account.toJson());
+
+      if (result != null) {
+        // Если успешно создан на сервере, обновляем ID
+        print('DEBUG: Account created on server, server ID: ${result['id']}');
+
+        // Удаляем временный счет
+        _accounts.removeWhere((a) => a.id == account.id);
+
+        // Нормализуем валюту
+        String currency = result['currency'];
+        if (currency == 'â½' || currency == 'Ñ\$') {
+          currency = '₽';
+        }
+
+        // Создаем новый аккаунт с ID от сервера
+        final newAccount = Account(
+          id: result['id'].toString(),
+          name: result['name'],
+          accountType: result['accountType'],
+          balance:
+              result['balance'] is int
+                  ? (result['balance'] as int).toDouble()
+                  : double.parse(result['balance'].toString()),
+          currency: currency, // Используем нормализованную валюту
+          isMain: result['isMain'] ?? false,
+          icon: IconData(result['iconCode'] ?? 0, fontFamily: 'MaterialIcons'),
+          color: Color(result['colorValue'] ?? 0xFF2196F3),
+          description: result['description'],
         );
+
+        _accounts.add(newAccount);
+        notifyListeners();
       }
+
+      saveData(); // Сохраняем локально для резервной копии
+    } catch (e) {
+      print('ERROR: Failed to add account: $e');
+      // Уже добавили локально, так что не дублируем
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -387,6 +437,113 @@ class AccountsProvider with ChangeNotifier {
       }
     } catch (e) {
       print('Error loading balance history: $e');
+    }
+  }
+
+  // Метод для восстановления счетов из транзакций
+  Future<void> recoverAccountsFromTransactions() async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // Вызываем API-метод для восстановления счетов на сервере
+      final recoveredAccounts =
+          await _apiService.recoverAccountsFromTransactions();
+
+      if (recoveredAccounts.isNotEmpty) {
+        // Обновляем локальный список счетов
+        _accounts =
+            recoveredAccounts
+                .map<Account>((json) => Account.fromJson(json))
+                .toList();
+        print('DEBUG: ${_accounts.length} accounts recovered from server');
+      }
+    } catch (e) {
+      print('ERROR: Failed to recover accounts from server: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+      saveData(); // Сохраняем локально
+    }
+  }
+
+  // Синхронизация локальных счетов с сервером
+  Future<void> syncLocalAccountsWithServer() async {
+    print('DEBUG: Syncing local accounts with server...');
+
+    // Получаем счета с сервера для сравнения
+    final serverAccounts = await _apiService.getAccounts();
+    final serverAccountIds =
+        serverAccounts.map<String>((acc) => acc['id'].toString()).toList();
+
+    // Находим локальные счета, которых нет на сервере
+    final accountsToSync =
+        _accounts
+            .where((localAcc) => !serverAccountIds.contains(localAcc.id))
+            .toList();
+
+    print('DEBUG: Found ${accountsToSync.length} accounts to sync with server');
+
+    // Отправляем каждый локальный счет на сервер
+    for (var account in accountsToSync) {
+      try {
+        print(
+          'DEBUG: Sending account ${account.name} (${account.id}) to server',
+        );
+
+        // Преобразуем счет в формат для сервера
+        final accountData = {
+          'name': account.name,
+          'accountType': account.accountType,
+          'balance': account.balance,
+          'currency': account.currency,
+          'isMain': account.isMain,
+          'iconCode': account.icon.codePoint,
+          'colorValue': account.color.value,
+        };
+
+        // Отправляем на сервер
+        final result = await _apiService.createAccount(accountData);
+
+        if (result != null) {
+          print('DEBUG: Account ${account.name} synced with server');
+
+          // Обновляем ID, если нужно
+          if (result['id'].toString() != account.id) {
+            print(
+              'DEBUG: Updating local account ID from ${account.id} to ${result['id']}',
+            );
+            // Обновить ID в локальной БД
+          }
+        } else {
+          print('ERROR: Failed to sync account ${account.name} with server');
+        }
+      } catch (e) {
+        print('ERROR: Exception syncing account: $e');
+      }
+    }
+
+    print('DEBUG: Account sync complete');
+  }
+
+  Future<void> syncBalancesWithServer() async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      final updatedAccounts = await _apiService.syncBalances();
+      if (updatedAccounts.isNotEmpty) {
+        _accounts =
+            updatedAccounts
+                .map<Account>((json) => Account.fromJson(json))
+                .toList();
+        print('DEBUG: Синхронизировано ${_accounts.length} счетов с сервером');
+      }
+    } catch (e) {
+      print('ERROR: Ошибка синхронизации балансов: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 }

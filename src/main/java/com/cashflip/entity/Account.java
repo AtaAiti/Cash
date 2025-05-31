@@ -2,9 +2,11 @@ package com.cashflip.entity;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Objects;
 
 @Entity
+@Table(name = "accounts")
 public class Account {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -21,6 +23,9 @@ public class Account {
     @ManyToOne
     @JoinColumn(name = "user_id")
     private User user;
+
+    @OneToMany(mappedBy = "account", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Transaction> transactions;
 
     // Конструкторы
     public Account() {
@@ -112,6 +117,14 @@ public class Account {
         this.user = user;
     }
 
+    public List<Transaction> getTransactions() {
+        return transactions;
+    }
+
+    public void setTransactions(List<Transaction> transactions) {
+        this.transactions = transactions;
+    }
+
     // Паттерн Builder
     public static AccountBuilder builder() {
         return new AccountBuilder();
@@ -174,8 +187,7 @@ public class Account {
         }
 
         public Account build() {
-            return new Account(id, name, balance, accountType, 
-            currency, isMain, iconCode, colorValue,  user);
+            return new Account(id, name, balance, accountType, currency, isMain, iconCode, colorValue, user);
         }
     }
 

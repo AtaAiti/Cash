@@ -8,6 +8,8 @@ class CurrencyProvider with ChangeNotifier {
   String _displayCurrency = '₽'; // Валюта для отображения
   Map<String, double> _conversionRates = {
     '₽': 1.0,
+    'â½': 1.0, // Добавляем закодированный рубль
+    'Ñ\$': 1.0, // Еще один вариант кодирования
     '\$': 0.011, // 1 RUB = 0.011 USD
     '€': 0.010, // 1 RUB = 0.010 EUR
     '£': 0.0085, // 1 RUB = 0.0085 GBP
@@ -21,6 +23,20 @@ class CurrencyProvider with ChangeNotifier {
       'name': 'Российский рубль',
       'code': 'RUB',
       'symbolPosition': 'after', // после числа
+      'decimalPlaces': 2,
+    },
+    'â½': {
+      // Добавляем закодированный рубль
+      'name': 'Российский рубль',
+      'code': 'RUB',
+      'symbolPosition': 'after',
+      'decimalPlaces': 2,
+    },
+    'Ñ\$': {
+      // Еще один вариант кодирования
+      'name': 'Российский рубль',
+      'code': 'RUB',
+      'symbolPosition': 'after',
       'decimalPlaces': 2,
     },
     '\$': {
@@ -117,32 +133,95 @@ class CurrencyProvider with ChangeNotifier {
     }
   }
 
+  // Перенесите метод на уровень класса, а не внутрь другого метода
+  String normalizeSymbol(String symbol) {
+    // Конвертируем в рубль все закодированные варианты
+    if (symbol == 'â½' ||
+        symbol == 'Ñ\$' ||
+        symbol.contains('â') ||
+        symbol.contains('½') ||
+        symbol.contains('Ñ') ||
+        symbol.contains('Ð') ||
+        symbol.contains('Ð¾Ð±') ||
+        symbol == 'РУБ' ||
+        symbol == 'RUB' ||
+        symbol == 'руб') {
+      return '₽';
+    }
+
+    // Если валюта уже в известном формате, возвращаем её как есть
+    if (_conversionRates.containsKey(symbol)) {
+      return symbol;
+    }
+
+    // Для всех остальных неизвестных символов используем рубль по умолчанию
+    if (!['₽', '\$', '€', '£', '¥'].contains(symbol)) {
+      print(
+        'DEBUG: CurrencyProvider - Unrecognized currency: "$symbol", using ₽ instead',
+      );
+      return '₽';
+    }
+
+    return symbol;
+  }
+
   double convert(double amount, String fromCurrency, String toCurrency) {
-    if (fromCurrency == toCurrency) return amount;
+    // Проверка на null или пустые значения
+    if (fromCurrency == null ||
+        toCurrency == null ||
+        fromCurrency.isEmpty ||
+        toCurrency.isEmpty) {
+      print(
+        'WARNING: CurrencyProvider - Null or empty currency in convert: from=$fromCurrency, to=$toCurrency',
+      );
+      return amount; // Возвращаем исходную сумму без конвертации
+    }
 
-    // First convert to RUB (base currency)
-    double amountInRub =
-        fromCurrency == '₽' ? amount : amount / _conversionRates[fromCurrency]!;
+    // Нормализуем входные символы используя публичный метод
+    final normalizedFromCurrency = normalizeSymbol(fromCurrency);
+    final normalizedToCurrency = normalizeSymbol(toCurrency);
 
-    // Then convert from RUB to target currency
-    return amountInRub * _conversionRates[toCurrency]!;
+    // Если валюты совпадают, просто возвращаем сумму
+    if (normalizedFromCurrency == normalizedToCurrency) {
+      return amount;
+    }
+
+    // Получаем курсы
+    final fromRate = _conversionRates[normalizedFromCurrency];
+    final toRate = _conversionRates[normalizedToCurrency];
+
+    // Если курсов нет, возвращаем сумму как есть
+    if (fromRate == null || toRate == null) {
+      return amount;
+    }
+
+    return (amount * fromRate) / toRate;
   }
 
   // Форматирование суммы с учетом валюты
   String formatAmount(double amount, String currency) {
-    if (!_currencyData.containsKey(currency)) {
-      currency = _displayCurrency; // По умолчанию используем текущую валюту
+    // Нормализация символа валюты используя общий метод
+    String normalizedCurrency = normalizeSymbol(currency);
+
+    // Убедимся, что данные для валюты существуют
+    if (!_currencyData.containsKey(normalizedCurrency)) {
+      print(
+        'DEBUG: CurrencyProvider - No formatting data for $normalizedCurrency, using default',
+      );
+      normalizedCurrency =
+          _displayCurrency; // По умолчанию используем текущую валюту
     }
 
-    final decimalPlaces = _currencyData[currency]!['decimalPlaces'] as int;
+    final decimalPlaces =
+        _currencyData[normalizedCurrency]!['decimalPlaces'] as int;
     final formattedNumber = amount.toStringAsFixed(decimalPlaces);
 
-    switch (_currencyData[currency]!['symbolPosition']) {
+    switch (_currencyData[normalizedCurrency]!['symbolPosition']) {
       case 'before':
-        return '$currency$formattedNumber';
+        return '$normalizedCurrency$formattedNumber';
       case 'after':
       default:
-        return '$formattedNumber $currency';
+        return '$formattedNumber $normalizedCurrency';
     }
   }
 
@@ -151,5 +230,23 @@ class CurrencyProvider with ChangeNotifier {
     final targetCurrency = currency ?? _currentCurrency;
     final convertedAmount = convert(amount, '₽', targetCurrency);
     return '${convertedAmount.toStringAsFixed(2)} $targetCurrency';
+  }
+
+  void initExchangeRates() {
+    // Добавляем базовые курсы, если API недоступен
+    _conversionRates = {
+      '₽': 1.0,
+      'â½': 1.0, // Добавляем закодированный рубль
+      'Ñ\$': 1.0, // Еще один вариант кодирования
+      '\$': 0.011, // примерный курс рубля к доллару
+      '€': 0.010, // примерный курс рубля к евро
+      '£': 0.0087, // примерный курс рубля к фунту
+      '¥': 1.63, // примерный курс рубля к йене
+    };
+
+    notifyListeners();
+
+    // После этого можно пытаться загружать актуальные курсы с API
+    _fetchLatestRates();
   }
 }

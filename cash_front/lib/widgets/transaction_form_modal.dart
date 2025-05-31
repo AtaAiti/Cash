@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:cash_flip_app/providers/accounts_provider.dart';
 import 'package:cash_flip_app/providers/transactions_provider.dart';
 import 'package:cash_flip_app/providers/currency_provider.dart';
+import 'package:cash_flip_app/providers/categories_provider.dart';
 
 // Добавляем поддержку передачи подкатегорий:
 
@@ -404,7 +405,7 @@ class _TransactionFormModalState extends State<TransactionFormModal> {
     );
   }
 
-  void _saveTransaction() {
+  Future<void> _submitTransaction() async {
     // Если есть незавершенная операция, выполняем её
     if (_currentOperation != null && _firstOperand != null) {
       _performOperation();
@@ -443,7 +444,9 @@ class _TransactionFormModalState extends State<TransactionFormModal> {
       print('ERROR: Invoice with ID $_accountId not found');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('The account was not found. Please select a different account.'),
+          content: Text(
+            'The account was not found. Please select a different account.',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -486,8 +489,18 @@ class _TransactionFormModalState extends State<TransactionFormModal> {
       'note': _note,
     };
 
+    // Синхронизируем категории перед созданием транзакции
+    final categoriesProvider = Provider.of<CategoriesProvider>(
+      context, 
+      listen: false
+    );
+    await categoriesProvider.syncCategoriesToServer();
+
     // Добавляем транзакцию с обновлением баланса счета
-    transactionsProvider.addTransaction(transaction, accountsProvider);
+    await transactionsProvider.addTransaction(transaction, accountsProvider);
+
+    // Принудительно запрашиваем список транзакций с сервера
+    await transactionsProvider.loadData();
 
     // Закрываем модальное окно
     Navigator.of(context).pop();
@@ -889,7 +902,7 @@ class _TransactionFormModalState extends State<TransactionFormModal> {
               } else if (key == 'save') {
                 return Expanded(
                   child: InkWell(
-                    onTap: _saveTransaction,
+                    onTap: _submitTransaction,
                     child: Container(
                       margin: EdgeInsets.all(4),
                       decoration: BoxDecoration(

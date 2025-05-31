@@ -82,6 +82,51 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   ? categoriesProvider.expenseCategories
                   : categoriesProvider.incomeCategories;
 
+          // Если идет загрузка, показываем индикатор загрузки
+          if (categoriesProvider.isLoading) {
+            return Center(child: CircularProgressIndicator());
+          }
+
+          // Если список категорий пуст, показываем информативное сообщение
+          if (categories.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.category_outlined,
+                    size: 64,
+                    color: Colors.grey[400],
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'У вас пока нет категорий',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Нажмите + чтобы добавить новую категорию',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          print(
+            'DEBUG: CategoriesScreen - Building UI with ${categories.length} ${_showExpenses ? "expense" : "income"} categories',
+          );
+          print(
+            'DEBUG: CategoriesScreen - Total categories in provider: ${categoriesProvider.categories.length}',
+          );
+          print(
+            'DEBUG: CategoriesScreen - Categories data: ${categories.map((c) => c.name).toList()}',
+          );
+
           return SingleChildScrollView(
             child: Column(
               children: [

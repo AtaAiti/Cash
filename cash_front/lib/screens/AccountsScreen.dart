@@ -44,28 +44,30 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   double totalBalanceInRub = 0;
                   final targetCurrency = currencyProvider.displayCurrency;
 
-                  for (var account in accountsProvider.accounts) {
-                    if (account.currency == targetCurrency) {
-                      totalBalanceInRub += account.balance;
-                    } else {
-                      // Конвертируем в целевую валюту
-                      totalBalanceInRub += currencyProvider.convert(
-                        account.balance,
-                        account.currency,
-                        targetCurrency,
-                      );
+                  try {
+                    // Безопасный перебор счетов
+                    for (var account in accountsProvider.accounts) {
+                      if (account.currency != null &&
+                          account.currency.isNotEmpty) {
+                        // Добавляем проверку на null
+                        totalBalanceInRub += currencyProvider.convert(
+                          account.balance,
+                          account.currency,
+                          '₽',
+                        );
+                      } else {
+                        // Если валюта не указана, просто добавляем баланс
+                        totalBalanceInRub += account.balance;
+                      }
                     }
-                  }
 
-                  // Convert and format with current display currency
-                  final formattedBalance = currencyProvider.formatAmount(
-                    totalBalanceInRub,
-                    targetCurrency, // Передайте валюту как второй параметр
-                  );
+                    // Безопасная конвертация в целевую валюту
+                    final formattedBalance = currencyProvider.formatAmount(
+                      totalBalanceInRub,
+                      targetCurrency ?? '₽',
+                    );
 
-                  return GestureDetector(
-                    onTap: () => _showCurrencySelectionModal(context),
-                    child: Row(
+                    return Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Column(
@@ -99,8 +101,15 @@ class _AccountsScreenState extends State<AccountsScreen> {
                           ],
                         ),
                       ],
-                    ),
-                  );
+                    );
+                  } catch (e) {
+                    print('ERROR: Currency conversion error: $e');
+                    // Возвращаем запасной вариант интерфейса
+                    return Text(
+                      'Баланс недоступен',
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                    );
+                  }
                 },
               ),
               leading: Builder(
@@ -237,11 +246,84 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Widget _buildAccountsContent() {
     return Consumer<AccountsProvider>(
       builder: (context, accountsProvider, _) {
+        print(
+          'DEBUG: _buildAccountsContent called with ${accountsProvider.accounts.length} accounts',
+        );
+
+        // Проверим форматирование каждого счета
         final currencyProvider = Provider.of<CurrencyProvider>(
           context,
           listen: false,
         );
+        for (var account in accountsProvider.accounts) {
+          final normalizedCurrency = currencyProvider.normalizeSymbol(
+            account.currency,
+          );
+          print(
+            'DEBUG: Account ${account.id} (${account.name}): currency=${account.currency} → normalized=$normalizedCurrency',
+          );
+
+          // Проверка конвертации
+          final converted = currencyProvider.convert(
+            account.balance,
+            account.currency,
+            '₽',
+          );
+          print(
+            'DEBUG: Conversion test: ${account.balance} ${account.currency} = $converted ₽',
+          );
+        }
+
         final accounts = accountsProvider.accounts;
+
+        // Если идет загрузка, показываем индикатор загрузки
+        if (accountsProvider.isLoading) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        print(
+          'DEBUG: AccountsScreen - Building UI with ${accounts.length} accounts',
+        );
+        print(
+          'DEBUG: AccountsScreen - Account IDs: ${accounts.map((a) => a.id).toList()}',
+        );
+        print(
+          'DEBUG: AccountsScreen - Is provider loading: ${accountsProvider.isLoading}',
+        );
+        print(
+          'DEBUG: AccountsScreen - Provider error: ${accountsProvider.error}',
+        );
+
+        // Если список счетов пуст, показываем информативное сообщение
+        if (accounts.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.account_balance_wallet_outlined,
+                  size: 64,
+                  color: Colors.grey[400],
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'У вас пока нет счетов',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Нажмите + чтобы добавить новый счёт',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          );
+        }
+
         final endDate = _currentFilter.endDate ?? DateTime.now();
 
         // Используем FutureBuilder для асинхронного получения балансов на дату

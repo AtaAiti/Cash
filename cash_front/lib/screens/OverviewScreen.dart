@@ -38,13 +38,14 @@ class _OverviewScreenState extends State<OverviewScreen> {
     // Группировка по категориям
     final expenseByCategory = <String, double>{};
     for (var tx in expenseTransactions) {
-      expenseByCategory[tx.category] =
-          (expenseByCategory[tx.category] ?? 0) + tx.amount.abs();
+      expenseByCategory[tx.category ?? 'Без категории'] =
+          (expenseByCategory[tx.category ?? 'Без категории'] ?? 0) +
+          tx.amount.abs();
     }
     final incomeByCategory = <String, double>{};
     for (var tx in incomeTransactions) {
-      incomeByCategory[tx.category] =
-          (incomeByCategory[tx.category] ?? 0) + tx.amount;
+      incomeByCategory[tx.category ?? 'Без категории'] =
+          (incomeByCategory[tx.category ?? 'Без категории'] ?? 0) + tx.amount;
     }
 
     // Сортировка по сумме

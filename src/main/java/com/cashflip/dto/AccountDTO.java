@@ -3,6 +3,8 @@ package com.cashflip.dto;
 import java.math.BigDecimal;
 import java.util.Objects;
 
+import com.cashflip.entity.Account;
+
 public class AccountDTO {
     private Long id;
     private String name;
@@ -183,5 +185,30 @@ public class AccountDTO {
                 ", currency='" + currency + '\'' +
                 ", isMain=" + isMain +
                 '}';
+    }
+
+    // В метод mapToDTO в AccountService добавить:
+    public AccountDTO mapToDTO(Account account) {
+        // Существующий код...
+
+        // Убедимся, что валюта и тип счета корректно закодированы
+        String currency = account.getCurrency();
+        if ("₽".equals(currency) && !currency.equals("₽")) {
+            currency = "₽";
+        }
+
+        String accountType = account.getAccountType();
+        if (accountType != null && accountType.contains("Ð¾Ð±ÑÑÐ½ÑÐ¹")) {
+            accountType = "обычный";
+        }
+
+        return new AccountDTO.AccountDTOBuilder()
+                .id(account.getId())
+                .name(account.getName())
+                .balance(account.getBalance())
+                .accountType(accountType)
+                .currency(currency)
+                // остальные поля...
+                .build();
     }
 }

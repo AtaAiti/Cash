@@ -376,7 +376,7 @@ class _SearchTransactionsModalState extends State<SearchTransactionsModal> {
                           ),
                         ),
                         _searchResults.isEmpty
-                          ? Center(
+                            ? Center(
                               child: Padding(
                                 padding: EdgeInsets.all(24.0),
                                 child: Text(
@@ -388,9 +388,10 @@ class _SearchTransactionsModalState extends State<SearchTransactionsModal> {
                                 ),
                               ),
                             )
-                          : Container(
+                            : Container(
                               constraints: BoxConstraints(
-                                maxHeight: MediaQuery.of(context).size.height * 0.4,
+                                maxHeight:
+                                    MediaQuery.of(context).size.height * 0.4,
                               ),
                               child: ListView.builder(
                                 shrinkWrap: true, // Важно для адаптивной высоты
@@ -398,22 +399,24 @@ class _SearchTransactionsModalState extends State<SearchTransactionsModal> {
                                 itemBuilder: (context, index) {
                                   final tx = _searchResults[index];
                                   final category =
-                                      categoriesProvider?.categories
-                                          .firstWhere(
-                                            (c) => c.name == tx.category,
-                                            orElse:
-                                                () => Category(
-                                                  id: '',
-                                                  name: tx.category,
-                                                  icon: Icons.category,
-                                                  color: Colors.grey,
-                                                  isExpense:
-                                                      tx.amount < 0,
-                                                ),
-                                          ) ??
+                                      categoriesProvider?.categories.firstWhere(
+                                        (c) =>
+                                            c.name ==
+                                            (tx.category ?? 'Без категории'),
+                                        orElse:
+                                            () => Category(
+                                              id: '',
+                                              name:
+                                                  tx.category ??
+                                                  'Без категории',
+                                              icon: Icons.category,
+                                              color: Colors.grey,
+                                              isExpense: tx.amount < 0,
+                                            ),
+                                      ) ??
                                       Category(
                                         id: '',
-                                        name: tx.category,
+                                        name: tx.category ?? 'Без категории',
                                         icon: Icons.category,
                                         color: Colors.grey,
                                         isExpense: tx.amount < 0,
@@ -430,9 +433,7 @@ class _SearchTransactionsModalState extends State<SearchTransactionsModal> {
                                     ),
                                     title: Text(
                                       '${tx.category}${tx.subcategory != null ? ' (${tx.subcategory})' : ''}',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                      ),
+                                      style: TextStyle(color: Colors.white),
                                     ),
                                     subtitle: Column(
                                       crossAxisAlignment:

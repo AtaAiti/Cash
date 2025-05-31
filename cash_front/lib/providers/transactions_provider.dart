@@ -7,8 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class Transaction {
   final String id;
-  final String category;
-  final String? subcategory;
+  final String? category; // Теперь может быть null
+  final String? subcategory; // Теперь может быть null
   final double amount;
   final String account;
   final String accountId;
@@ -18,8 +18,8 @@ class Transaction {
 
   Transaction({
     required this.id,
-    required this.category,
-    this.subcategory,
+    this.category, // Опциональный параметр
+    this.subcategory, // Опциональный параметр
     required this.amount,
     required this.account,
     required this.accountId,
@@ -47,8 +47,8 @@ class Transaction {
   factory Transaction.fromJson(Map<String, dynamic> json) {
     return Transaction(
       id: json['id'].toString(),
-      category: json['category'],
-      subcategory: json['subcategory'],
+      category: json['category'], // Может быть null
+      subcategory: json['subcategory'], // Может быть null
       amount: double.parse(json['amount'].toString()),
       account: json['account'],
       accountId: json['accountId'].toString(),
@@ -185,63 +185,23 @@ class TransactionsProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    print('DEBUG: Adding a transaction: $transactionData');
-    print('DEBUG: Number of accounts: ${accountsProvider.accounts.length}');
-    if (accountsProvider.accounts.isEmpty) {
-      print('mistake: The list of accounts is empty!');
-    }
-
-    final newTransaction = Transaction(
-      id: DateTime.now().toString(),
-      category: transactionData['category'],
-      subcategory: transactionData['subcategory'],
-      amount: transactionData['amount'],
-      account: transactionData['account'],
-      accountId: transactionData['accountId'],
-      currency: transactionData['currency'],
-      date: transactionData['date'],
-      note: transactionData['note'],
-    );
-
-    print(
-      'DEBUG: A transaction with an ID has been created: ${newTransaction.id}, account: ${newTransaction.accountId}',
-    );
-
     try {
-      print('DEBUG: transactionData before send: $transactionData');
+      // Отправляем на сервер
+      final result = await _apiService.createTransaction(transactionData);
 
-      // Добавляем на сервер
-      final apiTransactionData = newTransaction.toJson();
-      final result = await _apiService.createTransaction(apiTransactionData);
-
-      Transaction transactionToAdd;
       if (result != null) {
-        print('DEBUG: The transaction was successfully added to the server');
-        // Если успешно, используем данные с сервера
-        transactionToAdd = Transaction.fromJson(result);
-      } else {
-        // Если сервер вернул null, используем локальные данные
-        transactionToAdd = newTransaction;
+        // Добавляем в локальный список
+        final newTransaction = Transaction.fromJson(result);
+        _transactions.add(newTransaction);
+
+        // Сортируем транзакции по дате
+        _transactions.sort((a, b) => b.date.compareTo(a.date));
+
+        // Запрашиваем обновленные данные счетов
+        await accountsProvider.loadData();
       }
-
-      // Добавляем в список
-      _transactions.add(transactionToAdd);
-
-      // Обновляем баланс счета локально
-      _updateAccountBalance(transactionToAdd, accountsProvider);
-
-      // Сортируем по дате
-      _transactions.sort((a, b) => b.date.compareTo(a.date));
     } catch (e) {
-      print("mistake: Couldn't add a transaction: $e");
-      // При ошибке добавляем только локально
-      _transactions.add(newTransaction);
-
-      // Обновляем баланс счета локально
-      _updateAccountBalance(newTransaction, accountsProvider);
-
-      // Сортируем по дате
-      _transactions.sort((a, b) => b.date.compareTo(a.date));
+      print("ERROR: Не удалось добавить транзакцию: $e");
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -273,7 +233,7 @@ class TransactionsProvider with ChangeNotifier {
         (a) => a.id == transaction.accountId,
       );
       print(
-        'DEBUG: Account found: ${account.name }, current balance: ${account.balance}',
+        'DEBUG: Account found: ${account.name}, current balance: ${account.balance}',
       );
     } catch (e) {
       print('ERROR: Account not found: ${transaction.accountId}, error: $e');
@@ -529,16 +489,58 @@ class TransactionsProvider with ChangeNotifier {
   Map<DateTime, List<Transaction>> getFilteredTransactionsByDay(
     DateFilter filter,
   ) {
-    final filteredTransactions = getFilteredTransactions(filter);
+    // Add debug for filter dates
+    print(
+      'DEBUG: Filter dates - start: ${filter.startDate}, end: ${filter.endDate}',
+    );
 
-    final Map<DateTime, List<Transaction>> grouped = {};
+    // Filter transactions based on date
+    final filteredTransactions =
+        transactions.where((tx) {
+          // Get just the date part without time for comparison
+          final txDate = DateTime(tx.date.year, tx.date.month, tx.date.day);
+          final startDate = DateTime(
+            filter.startDate!.year,
+            filter.startDate!.month,
+            filter.startDate!.day,
+          );
+          final endDate = DateTime(
+            filter.endDate!.year,
+            filter.endDate!.month,
+            filter.endDate!.day,
+          );
+
+          // Debug each transaction date comparison
+          print(
+            'DEBUG: Transaction ${tx.id} date: ${tx.date} (normalized: $txDate)',
+          );
+          print('DEBUG: Comparing with filter: $startDate to $endDate');
+          print(
+            'DEBUG: Is within range: ${(txDate.isAtSameMomentAs(startDate) || txDate.isAfter(startDate)) && (txDate.isAtSameMomentAs(endDate) || txDate.isBefore(endDate))}',
+          );
+
+          // Compare just the date part, ignoring time
+          return (txDate.isAtSameMomentAs(startDate) ||
+                  txDate.isAfter(startDate)) &&
+              (txDate.isAtSameMomentAs(endDate) || txDate.isBefore(endDate));
+        }).toList();
+
+    print(
+      'DEBUG: Filtered ${filteredTransactions.length} transactions out of ${transactions.length}',
+    );
+
+    // Group by day
+    final grouped = <DateTime, List<Transaction>>{};
     for (var tx in filteredTransactions) {
-      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
-      if (!grouped.containsKey(day)) {
-        grouped[day] = [];
+      // Create a date with just year, month, and day (no time)
+      final dateKey = DateTime(tx.date.year, tx.date.month, tx.date.day);
+
+      if (!grouped.containsKey(dateKey)) {
+        grouped[dateKey] = [];
       }
-      grouped[day]!.add(tx);
+      grouped[dateKey]!.add(tx);
     }
+
     return grouped;
   }
 
@@ -558,7 +560,8 @@ class TransactionsProvider with ChangeNotifier {
             : filteredTransactions.where((tx) => tx.amount > 0);
 
     for (var tx in transactions) {
-      result[tx.category] = (result[tx.category] ?? 0) + tx.amount.abs();
+      result[tx.category ?? 'Без категории'] =
+          (result[tx.category ?? 'Без категории'] ?? 0) + tx.amount.abs();
     }
 
     return result;
@@ -581,5 +584,64 @@ class TransactionsProvider with ChangeNotifier {
             .toList();
 
     return transactions.fold<double>(0, (sum, tx) => sum + tx.amount.abs());
+  }
+
+  // Синхронизация локальных транзакций с сервером
+  Future<void> syncLocalTransactionsWithServer() async {
+    if (_transactions.isEmpty) return;
+
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      // Получаем транзакции с сервера для сравнения
+      final serverTransactions = await _apiService.getTransactions();
+      final serverTransactionIds =
+          serverTransactions.map<String>((tx) => tx['id'].toString()).toList();
+
+      // Находим локальные транзакции, которых нет на сервере
+      final transactionsToSync =
+          _transactions
+              .where((localTx) => !serverTransactionIds.contains(localTx.id))
+              .toList();
+
+      print(
+        'DEBUG: Found ${transactionsToSync.length} transactions to sync with server',
+      );
+
+      // Отправляем каждую транзакцию на сервер
+      for (var transaction in transactionsToSync) {
+        try {
+          await _apiService.createTransaction(transaction.toJson());
+        } catch (e) {
+          print('ERROR: Failed to sync transaction: $e');
+        }
+      }
+
+      // Перезагружаем данные с сервера
+      await loadData();
+    } catch (e) {
+      print('ERROR: Failed to sync transactions: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Обработка ответа сервера при создании транзакции
+  Future<void> handleTransactionResponse(Map<String, dynamic>? response) async {
+    if (response == null) {
+      print('ERROR: Пустой ответ от сервера');
+      return;
+    }
+
+    try {
+      final transaction = Transaction.fromJson(response);
+      // Дальнейшая обработка транзакции
+      print('DEBUG: Транзакция успешно создана с ID: ${transaction.id}');
+    } catch (e) {
+      print('ERROR: Не удалось обработать ответ сервера: $e');
+      print('DEBUG: Содержимое ответа: $response');
+    }
   }
 }

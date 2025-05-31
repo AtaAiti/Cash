@@ -90,33 +90,40 @@ class CategoriesProvider with ChangeNotifier {
   Future<void> loadData() async {
     _isLoading = true;
     _error = null;
-    _categories =
-        []; // <<< ВАЖНОЕ ИЗМЕНЕНИЕ: Очищаем список категорий в памяти перед загрузкой
-    notifyListeners(); // Уведомляем UI, что данные очищаются/перезагружаются
-
+    _categories = [];
+    print('DEBUG: Starting to load categories data');
+    notifyListeners();
     try {
-      // Сначала пробуем загрузить с сервера
+      // Sever data loading
+      print('DEBUG: Attempting to fetch categories from server');
       final categoriesDataFromServer = await _apiService.getCategories();
+      print(
+        'DEBUG: Server returned ${categoriesDataFromServer.length} categories',
+      );
 
       if (categoriesDataFromServer.isNotEmpty) {
         _categories =
             categoriesDataFromServer
                 .map<Category>((json) => Category.fromJson(json))
                 .toList();
-        await saveData(); // Сохраняем свежие данные с сервера в SharedPreferences
+        print('DEBUG: Loaded ${_categories.length} categories from server');
+        await saveData();
       } else {
-        // Сервер не вернул категорий для этого пользователя (например, новый пользователь).
-        // _categories уже пуст после очистки в начале метода.
-        // Сохраняем пустой список в SharedPreferences, чтобы очистить старые локальные данные.
-        await saveData(); // Это сохранит пустой список _categories
+        print('DEBUG: No categories returned from server, checking local data');
+        await _loadLocalData();
       }
     } catch (e) {
-      print('Error loading categories from API: $e');
-      _error = 'Failed to load categories from server. Clearing local data.';
-      _categories = []; // Очищаем категории при ошибке API
-      await saveData(); // Сохраняем пустой список, чтобы очистить локальные данные при ошибке
+      print('ERROR: Failed to load categories from API: $e');
+      _error = 'Failed to load categories from server. Checking local data.';
+      await _loadLocalData();
     } finally {
       _isLoading = false;
+      print(
+        'DEBUG: Categories loading complete. Categories count: ${_categories.length}',
+      );
+      print(
+        'DEBUG: Expense categories: ${expenseCategories.length}, Income categories: ${incomeCategories.length}',
+      );
       notifyListeners();
     }
   }
@@ -276,6 +283,67 @@ class CategoriesProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       saveData(); // Сохраняем локально
+    }
+  }
+
+  Future<void> syncCategoriesToServer() async {
+    try {
+      print('DEBUG: Начинаем синхронизацию категорий с сервером');
+
+      // Получаем категории с сервера
+      final serverCategories = await _apiService.getCategories();
+      final serverCategoryNames =
+          serverCategories
+              .map<String>((cat) => cat['name'].toString())
+              .toList();
+
+      print('DEBUG: Категории на сервере: $serverCategoryNames');
+      print(
+        'DEBUG: Локальные категории: ${_categories.map((c) => c.name).toList()}',
+      );
+
+      // Находим категории, которых нет на сервере
+      final categoriesToSync =
+          _categories
+              .where((localCat) => !serverCategoryNames.contains(localCat.name))
+              .toList();
+
+      print(
+        'DEBUG: Нужно синхронизировать ${categoriesToSync.length} категорий',
+      );
+
+      // Массив для хранения созданных категорий и их ID
+      List<Map<String, dynamic>> createdCategories = [];
+
+      // Отправляем каждую категорию на сервер
+      for (var category in categoriesToSync) {
+        final categoryData = {
+          'name': category.name,
+          'isExpense': category.isExpense,
+          'color': category.color.value,
+          'icon': category.icon.codePoint,
+        };
+
+        final result = await _apiService.createCategory(categoryData);
+        if (result != null && result['id'] != null) {
+          createdCategories.add({'name': category.name, 'id': result['id']});
+          print(
+            'DEBUG: Категория ${category.name} создана с ID: ${result['id']}',
+          );
+        } else {
+          print('ERROR: Не удалось создать категорию ${category.name}');
+        }
+      }
+
+      // Повторный запрос категорий с сервера для проверки
+      final updatedCategories = await _apiService.getCategories();
+      print(
+        'DEBUG: Обновленные категории на сервере: ${updatedCategories.map((c) => "${c['name']}:${c['id']}").toList()}',
+      );
+
+      print('DEBUG: Синхронизация категорий завершена');
+    } catch (e) {
+      print('ERROR: Ошибка синхронизации категорий: $e');
     }
   }
 }

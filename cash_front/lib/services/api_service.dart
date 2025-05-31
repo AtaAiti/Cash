@@ -60,15 +60,6 @@ class ApiService {
   // Общий метод выполнения POST запросов
   Future<dynamic> post(String endpoint, dynamic data) async {
     try {
-      // Если это данные транзакции и содержат дату в виде строки, преобразуем
-      if (endpoint.contains('transactions') &&
-          data is Map<String, dynamic> &&
-          data.containsKey('date')) {
-        if (data['date'] is String) {
-          data['date'] = DateTime.parse(data['date']).millisecondsSinceEpoch;
-        }
-      }
-
       // Проверяем colorValue, если он есть
       if (data is Map<String, dynamic> && data.containsKey('colorValue')) {
         if (data['colorValue'] is int && data['colorValue'] > 2147483647) {
@@ -125,34 +116,67 @@ class ApiService {
 
   // Обработка ответа сервера
   dynamic _handleResponse(http.Response response) {
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (response.body.isEmpty) return null;
+    print(
+      'DEBUG: API - Processing response with status code: ${response.statusCode}',
+    );
+    print('DEBUG: API - Response URL: ${response.request?.url}');
 
-      final data = jsonDecode(response.body);
-      // Проверяем, какой тип данных вернулся
-      if (data is List &&
-          response.request != null &&
-          response.request!.url.path.contains('/accounts')) {
-        return data
-            .map(
-              (json) => {
-                'id': json['id'].toString(), // Преобразуем Long в String
-                'name': json['name'],
-                'accountType': json['accountType'],
-                'balance': json['balance'],
-                'currency': json['currency'],
-                'isMain': json['isMain'],
-                'iconCode': json['iconCode'] ?? 0, // По умолчанию 0
-                'colorValue':
-                    json['colorValue'] ?? 0xFF2196F3, // По умолчанию синий
-              },
-            )
-            .toList();
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.body.isEmpty) {
+        print('DEBUG: API - Response body is empty');
+        return null;
       }
-      return data; // Возвращаем данные как есть для других API
+
+      try {
+        final data = jsonDecode(response.body);
+        print('DEBUG: API - Successfully decoded JSON data: $data');
+
+        if (data is List) {
+          print(
+            'DEBUG: API - Response contains a list with ${data.length} items',
+          );
+        } else if (data is Map) {
+          print(
+            'DEBUG: API - Response contains a map with keys: ${data.keys.toList()}',
+          );
+        }
+
+        // Проверяем, какой тип данных вернулся
+        if (data is List &&
+            response.request != null &&
+            response.request!.url.path.contains('/accounts')) {
+          final transformed =
+              data
+                  .map(
+                    (json) => {
+                      'id': json['id'].toString(), // Преобразуем Long в String
+                      'name': json['name'],
+                      'accountType': json['accountType'],
+                      'balance': json['balance'],
+                      'currency': json['currency'],
+                      'isMain': json['isMain'],
+                      'iconCode': json['iconCode'] ?? 0, // По умолчанию 0
+                      'colorValue':
+                          json['colorValue'] ??
+                          0xFF2196F3, // По умолчанию синий
+                    },
+                  )
+                  .toList();
+          print('DEBUG: API - Transformed accounts data: $transformed');
+          return transformed;
+        }
+        return data; // Возвращаем данные как есть для других API
+      } catch (e) {
+        print('ERROR: API - JSON decode error: $e');
+        print('ERROR: API - Raw response body: ${response.body}');
+        throw Exception('Failed to parse response: $e');
+      }
     } else if (response.statusCode == 401) {
+      print('ERROR: API - Unauthorized request (401)');
       throw Exception('Unauthorized');
     } else {
+      print('ERROR: API - Server error with status: ${response.statusCode}');
+      print('ERROR: API - Response body: ${response.body}');
       throw Exception('Server error: ${response.statusCode}');
     }
   }
@@ -213,19 +237,57 @@ class ApiService {
 
   Future<List<dynamic>> getAccounts() async {
     try {
-      final data = await get('accounts');
+      print('DEBUG: API - Requesting accounts from server');
+      final headers = await getHeaders();
+      print('DEBUG: API - Headers for accounts request: $headers');
+
+      final response = await http
+          .get(Uri.parse('$baseUrl/accounts'), headers: headers)
+          .timeout(Duration(seconds: 10));
+
+      print(
+        'DEBUG: API - Accounts response status code: ${response.statusCode}',
+      );
+      print('DEBUG: API - Accounts response body: ${response.body}');
+
+      final data = _handleResponse(response);
+      print('DEBUG: API - Parsed accounts data: $data');
       return data ?? [];
     } catch (e) {
-      print('Get accounts error: $e');
+      print('ERROR: API - Get accounts error: $e');
       return [];
     }
   }
 
   Future<dynamic> createAccount(Map<String, dynamic> accountData) async {
     try {
-      return await post('accounts', accountData);
+      print('DEBUG: API - Creating account with data: $accountData');
+
+      // Проверка наличия необходимых полей
+      if (!accountData.containsKey('name') ||
+          !accountData.containsKey('accountType')) {
+        print('ERROR: API - Missing required fields for account creation');
+        return null;
+      }
+
+      // Преобразование данных для сервера (преобразование типов и т.д.)
+      final serverData = {
+        'name': accountData['name'],
+        'accountType': accountData['accountType'],
+        'balance': accountData['balance'],
+        'currency': accountData['currency'],
+        'isMain': accountData['isMain'] ?? false,
+        'iconCode': accountData['iconCode'] ?? 0,
+        'colorValue': accountData['colorValue'] ?? 0xFF2196F3,
+      };
+
+      // Отправка запроса
+      final result = await post('accounts', serverData);
+      print('DEBUG: API - Server response for account creation: $result');
+
+      return result;
     } catch (e) {
-      print('Create account error: $e');
+      print('ERROR: API - Create account error: $e');
       return null;
     }
   }
@@ -298,22 +360,54 @@ class ApiService {
 
   Future<List<dynamic>> getCategories() async {
     try {
-      final data = await get('categories');
+      print('DEBUG: API - Requesting categories from server');
+      final headers = await getHeaders();
+      print('DEBUG: API - Headers for categories request: $headers');
+
+      final response = await http
+          .get(Uri.parse('$baseUrl/categories'), headers: headers)
+          .timeout(Duration(seconds: 10));
+
+      print(
+        'DEBUG: API - Categories response status code: ${response.statusCode}',
+      );
+      print('DEBUG: API - Categories response body: ${response.body}');
+
+      final data = _handleResponse(response);
+      print('DEBUG: API - Parsed categories data: $data');
       return data ?? [];
     } catch (e) {
-      print('Get categories error: $e');
+      print('ERROR: API - Get categories error: $e');
       return [];
     }
   }
 
-  Future<dynamic> createCategory(Map<String, dynamic> categoryData) async {
+  Future<Map<String, dynamic>?> createCategory(
+    Map<String, dynamic> categoryData,
+  ) async {
     try {
-      print('Category data being sent: $categoryData'); // Добавить логирование
-      final result = await post('categories', categoryData);
-      print('Server response: $result'); // Добавить логирование
+      print('DEBUG: Создание категории на сервере: $categoryData');
+
+      // Преобразуем поля для соответствия ожиданиям сервера
+      final serverData = {
+        'name': categoryData['name'],
+        'expense': categoryData['isExpense'], // isExpense -> expense
+        'colorValue': categoryData['color'], // color -> colorValue
+        'iconCode': categoryData['icon'], // icon -> iconCode
+      };
+
+      print('DEBUG: Отправка данных категории: $serverData');
+      final result = await post('categories', serverData);
+      print('DEBUG: Ответ сервера при создании категории: $result');
+
+      // Если ID категории null, выведем предупреждение
+      if (result != null && result['id'] == null) {
+        print('ПРЕДУПРЕЖДЕНИЕ: Сервер вернул категорию с null ID');
+      }
+
       return result;
     } catch (e) {
-      print('Create category error: $e');
+      print('ERROR: Ошибка при создании категории: $e');
       return null;
     }
   }
@@ -344,10 +438,58 @@ class ApiService {
 
   Future<List<dynamic>> getTransactions() async {
     try {
-      final data = await get('transactions');
+      print('DEBUG: API - Requesting transactions from server');
+      final headers = await getHeaders();
+      print('DEBUG: API - Headers for transactions request: $headers');
+
+      final response = await http
+          .get(Uri.parse('$baseUrl/transactions'), headers: headers)
+          .timeout(Duration(seconds: 10));
+
+      print(
+        'DEBUG: API - Transactions response status code: ${response.statusCode}',
+      );
+      print('DEBUG: API - Transactions response body: ${response.body}');
+
+      if (response.statusCode == 403) {
+        // Проверка возможных причин ошибки 403
+        try {
+          final errorBody = jsonDecode(response.body);
+          print('DEBUG: API - Transactions error details: $errorBody');
+        } catch (e) {
+          print(
+            'DEBUG: API - Could not parse error response: ${response.body}',
+          );
+        }
+
+        // Проверка токена на действительность
+        final token = await getToken();
+        if (token != null) {
+          final tokenParts = token.split('.');
+          if (tokenParts.length == 3) {
+            try {
+              final payload = base64Url.decode(
+                base64Url.normalize(tokenParts[1]),
+              );
+              final payloadMap = jsonDecode(utf8.decode(payload));
+              final expiry = payloadMap['exp'];
+              final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+              print(
+                'DEBUG: API - Token expiry: $expiry, current time: $now, is expired: ${expiry < now}',
+              );
+            } catch (e) {
+              print('DEBUG: API - Error checking token: $e');
+            }
+          }
+        }
+
+        throw Exception('Нет доступа к транзакциям (403)');
+      }
+
+      final data = _handleResponse(response);
       return data ?? [];
     } catch (e) {
-      print('Get transactions error: $e');
+      print('ERROR: API - Get transactions error: $e');
       return [];
     }
   }
@@ -395,11 +537,11 @@ class ApiService {
     Map<String, dynamic> transactionData,
   ) async {
     try {
-      print('DEBUG: Creating a data transaction: $transactionData');
+      print('DEBUG: Создание транзакции: $transactionData');
 
       // Проверка наличия всех необходимых полей
       if (!transactionData.containsKey('accountId')) {
-        print('mistake: Account Id is missing in the transaction data');
+        print('ERROR: Отсутствует ID счета в данных транзакции');
         return null;
       }
 
@@ -407,7 +549,7 @@ class ApiService {
       final accountId = int.tryParse(transactionData['accountId'].toString());
       if (accountId == null) {
         print(
-          'mistake: Incorrect Account ID format: ${transactionData['accountId']}',
+          'ERROR: Некорректный формат ID счета: ${transactionData['accountId']}',
         );
         throw Exception("Incorrect Account ID format");
       }
@@ -416,22 +558,120 @@ class ApiService {
       final serverData = {...transactionData};
       serverData['accountId'] = accountId;
 
-      print('DEBUG: Sending data to the server: $serverData');
+      // Принудительно запрашиваем свежие категории с сервера
+      print('DEBUG: Запрос актуальных категорий с сервера');
+      final categories = await getCategories();
+
+      // Обработка категории
+      if (serverData.containsKey('category') &&
+          serverData['category'] != null &&
+          serverData['category'].toString().isNotEmpty) {
+        final categoryName = serverData['category'];
+        print('DEBUG: Категория в транзакции: $categoryName');
+        print(
+          'DEBUG: Доступные категории на сервере: ${categories.map((c) => "${c['name']}:${c['id']}").toList()}',
+        );
+
+        // Ищем категорию в полученном списке
+        int? categoryId;
+        for (var category in categories) {
+          if (category['name'] == categoryName) {
+            categoryId =
+                category['id'] is int
+                    ? category['id']
+                    : int.tryParse(category['id'].toString());
+            print('DEBUG: Найдена категория "$categoryName" с ID: $categoryId');
+            break;
+          }
+        }
+
+        if (categoryId != null) {
+          serverData['categoryId'] = categoryId;
+          print('DEBUG: Установлен ID категории: $categoryId для транзакции');
+        } else {
+          print(
+            'ПРЕДУПРЕЖДЕНИЕ: Категория "$categoryName" не найдена на сервере, создаем её',
+          );
+          // Создаем категорию, если её нет
+          final newCategory = await createCategory({
+            'name': categoryName,
+            'isExpense':
+                serverData['amount'] is double && serverData['amount'] < 0,
+            'color': 4280391411, // Стандартный цвет
+            'icon': 58136, // Стандартная иконка
+          });
+
+          if (newCategory != null && newCategory['id'] != null) {
+            serverData['categoryId'] = newCategory['id'];
+            print('DEBUG: Создана новая категория с ID: ${newCategory['id']}');
+          }
+        }
+      }
+
+      // Преобразуем DateTime в строку ISO 8601
+      if (serverData.containsKey('date') && serverData['date'] is DateTime) {
+        serverData['date'] = serverData['date'].toIso8601String();
+      }
+
+      print('DEBUG: Отправка данных на сервер: $serverData');
       final result = await post('transactions', serverData);
-      print('DEBUG: Server response: $result');
+      print('DEBUG: Ответ сервера: $result');
 
       return result;
     } catch (e) {
-      print('mistake: [createTransaction] $e');
+      print('ERROR: [createTransaction] $e');
       return null;
     }
   }
 
-  // Вспомогательный метод для получения ID категории по имени
-  int? getCategoryIdByName(String categoryName) {
-    // Этот метод должен вернуть ID категории по имени
-    // Можно реализовать кэширование категорий или запрос к серверу
-    print('DEBUG: [getCategoryIdByName] Search for a category ID: $categoryName');
-    return null; // Заглушка - нужно реализовать
+  // Добавьте этот метод для получения ID категории по имени
+  Future<int?> getCategoryIdByName(String categoryName) async {
+    try {
+      final categories = await getCategories();
+      print(
+        'DEBUG: Ищем категорию "$categoryName" среди ${categories.length} категорий',
+      );
+
+      for (var category in categories) {
+        print('DEBUG: Сравниваем с категорией: ${category['name']}');
+        if (category['name'] == categoryName) {
+          final categoryId = category['id'];
+          print('DEBUG: Найдена категория с ID $categoryId');
+          return categoryId is int
+              ? categoryId
+              : int.tryParse(categoryId.toString());
+        }
+      }
+      return null;
+    } catch (e) {
+      print('ERROR: Ошибка при поиске ID категории: $e');
+      return null;
+    }
+  }
+
+  Future<List<dynamic>> recoverAccountsFromTransactions() async {
+    try {
+      print('DEBUG: Восстановление счетов из транзакций...');
+      final result = await post('accounts/recover-from-transactions', {});
+      print('DEBUG: Восстановлено счетов: ${result.length}');
+      return result;
+    } catch (e) {
+      print('ERROR: Ошибка при восстановлении счетов: $e');
+      return [];
+    }
+  }
+
+  Future<List<dynamic>> syncBalances() async {
+    try {
+      print('DEBUG: Запрос синхронизации балансов с сервером...');
+      final response = await post('accounts/sync-balances', {});
+      print(
+        'DEBUG: Получено ${response?.length ?? 0} счетов с обновленными балансами',
+      );
+      return response ?? [];
+    } catch (e) {
+      print('ERROR: Ошибка при синхронизации балансов: $e');
+      return [];
+    }
   }
 }

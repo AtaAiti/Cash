@@ -24,6 +24,78 @@ class _OperationsScreenState extends State<OperationsScreen> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _refreshTransactions();
+      setState(() {}); // Принудительное обновление UI после загрузки
+    });
+  }
+
+  Future<void> _refreshTransactions() async {
+    final transactionsProvider = Provider.of<TransactionsProvider>(
+      context,
+      listen: false,
+    );
+    await transactionsProvider.loadData();
+  }
+
+  Map<DateTime, List<Transaction>> _getFilteredTransactions(
+    TransactionsProvider provider,
+  ) {
+    // Debug filter
+    print(
+      'DEBUG: Filter dates - start: ${_currentFilter.startDate}, end: ${_currentFilter.endDate}',
+    );
+
+    // Filter transactions based on date
+    final filteredTransactions =
+        provider.transactions.where((tx) {
+          // Получаем только дату без времени
+          final txDate = DateTime(tx.date.year, tx.date.month, tx.date.day);
+          final startDate = DateTime(
+            _currentFilter.startDate!.year,
+            _currentFilter.startDate!.month,
+            _currentFilter.startDate!.day,
+          );
+          final endDate = DateTime(
+            _currentFilter.endDate!.year,
+            _currentFilter.endDate!.month,
+            _currentFilter.endDate!.day,
+          );
+
+          // Debug
+          print(
+            'DEBUG: Checking tx date ${txDate} against filter ${startDate} - ${endDate}',
+          );
+
+          // Включаем все транзакции от начальной даты до конечной даты включительно
+          return txDate.isAtSameMomentAs(startDate) ||
+              (txDate.isAfter(startDate) &&
+                  (txDate.isBefore(endDate) ||
+                      txDate.isAtSameMomentAs(endDate)));
+        }).toList();
+
+    print(
+      'DEBUG: Manually filtered ${filteredTransactions.length} transactions',
+    );
+
+    // Group by day
+    final grouped = <DateTime, List<Transaction>>{};
+    for (var tx in filteredTransactions) {
+      // Create a date with just year, month, and day (no time)
+      final dateKey = DateTime(tx.date.year, tx.date.month, tx.date.day);
+
+      if (!grouped.containsKey(dateKey)) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey]!.add(tx);
+    }
+
+    return grouped;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Color(0xFF23222A),
@@ -55,8 +127,30 @@ class _OperationsScreenState extends State<OperationsScreen> {
           Expanded(
             child: Consumer<TransactionsProvider>(
               builder: (ctx, transactionsProvider, _) {
-                final groupedTransactions = transactionsProvider
-                    .getFilteredTransactionsByDay(_currentFilter);
+                // Добавьте отладочный вывод
+                print(
+                  'DEBUG: Всего транзакций: ${transactionsProvider.transactions.length}',
+                );
+                for (var tx in transactionsProvider.transactions) {
+                  print(
+                    'DEBUG: Транзакция ${tx.id}: ${tx.amount} ${tx.currency}, категория: ${tx.category}',
+                  );
+                }
+
+                final groupedTransactions = _getFilteredTransactions(
+                  transactionsProvider,
+                );
+
+                // Добавим отладочный вывод для проверки группировки
+                print('DEBUG: Группировка транзакций по дням:');
+                print(
+                  'DEBUG: Количество дней: ${groupedTransactions.keys.length}',
+                );
+                for (var dateKey in groupedTransactions.keys) {
+                  print(
+                    'DEBUG: День $dateKey: ${groupedTransactions[dateKey]?.length} транзакций',
+                  );
+                }
 
                 if (groupedTransactions.isEmpty) {
                   return Center(
@@ -209,14 +303,16 @@ class _OperationsScreenState extends State<OperationsScreen> {
     );
 
     // Ищем категорию по имени
-    String categoryName = tx.category;
+    String? categoryName = tx.category;
     Category? category;
-    try {
-      category = categoriesProvider.categories.firstWhere(
-        (c) => c.name == categoryName,
-      );
-    } catch (e) {
-      category = null;
+    if (tx.category != null) {
+      try {
+        category = categoriesProvider.categories.firstWhere(
+          (c) => c.name == tx.category!, // Добавляем оператор ! здесь
+        );
+      } catch (e) {
+        category = null;
+      }
     }
 
     if (category != null) {
@@ -256,7 +352,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
     }
 
     // Формируем строку категории с подкатегорией (если есть)
-    String categoryText = tx.category;
+    String categoryText = tx.category ?? 'Без категории';
     if (tx.subcategory != null && tx.subcategory!.isNotEmpty) {
       categoryText += ' (${tx.subcategory})';
     }

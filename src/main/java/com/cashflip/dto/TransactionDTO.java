@@ -10,9 +10,32 @@ public class TransactionDTO {
     private BigDecimal amount;
     private String account;
     private Long accountId;
+    private Long categoryId;
     private String currency;
     private LocalDateTime date;
     private String note;
+    private String description; // Добавляем поле description
+
+    // Конструктор без параметров
+    public TransactionDTO() {
+    }
+
+    // Полный конструктор
+    public TransactionDTO(Long id, String category, String subcategory, BigDecimal amount,
+                        String account, Long accountId, Long categoryId, String currency,
+                        LocalDateTime date, String note, String description) {
+        this.id = id;
+        this.category = category;
+        this.subcategory = subcategory;
+        this.amount = amount;
+        this.account = account;
+        this.accountId = accountId;
+        this.categoryId = categoryId;
+        this.currency = currency;
+        this.date = date;
+        this.note = note;
+        this.description = description;
+    }
 
     // Геттеры и сеттеры
     public Long getId() {
@@ -63,6 +86,14 @@ public class TransactionDTO {
         this.accountId = accountId;
     }
 
+    public Long getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(Long categoryId) {
+        this.categoryId = categoryId;
+    }
+
     public String getCurrency() {
         return currency;
     }
@@ -79,11 +110,24 @@ public class TransactionDTO {
         this.date = date;
     }
 
+    public String getDescription() {
+        // Если description не задан, возвращаем note
+        return description != null ? description : note;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+        // Для совместимости также устанавливаем note
+        this.note = description;
+    }
+
     public String getNote() {
         return note;
     }
 
     public void setNote(String note) {
         this.note = note;
+        // Для совместимости также устанавливаем description
+        this.description = note;
     }
 }

@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:cash_flip_app/providers/currency_provider.dart';
+import 'dart:async';
 // import 'package:intl/date_symbol_data_localized.dart';
 
 void main() async {
@@ -83,6 +84,58 @@ class _MainScreenState extends State<MainScreen> {
     OperationsScreen(),
     OverviewScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+
+    // Настройка периодической синхронизации
+    Timer.periodic(Duration(minutes: 5), (timer) {
+      _syncData();
+    });
+  }
+
+  Future<void> _syncData() async {
+    final accountsProvider = Provider.of<AccountsProvider>(
+      context,
+      listen: false,
+    );
+    final transactionsProvider = Provider.of<TransactionsProvider>(
+      context,
+      listen: false,
+    );
+
+    // Синхронизируем балансы
+    await accountsProvider.syncBalancesWithServer();
+
+    // Перезагружаем транзакции с сервера
+    await transactionsProvider.loadData();
+  }
+
+  Future<void> _loadInitialData() async {
+    final accountsProvider = Provider.of<AccountsProvider>(
+      context,
+      listen: false,
+    );
+    final categoriesProvider = Provider.of<CategoriesProvider>(
+      context,
+      listen: false,
+    );
+    final transactionsProvider = Provider.of<TransactionsProvider>(
+      context,
+      listen: false,
+    );
+
+    await accountsProvider.loadData();
+    await categoriesProvider.loadData();
+
+    // Синхронизируем локальные счета с сервером
+    await accountsProvider.syncLocalAccountsWithServer();
+
+    // Теперь загружаем транзакции
+    await transactionsProvider.loadData();
+  }
 
   @override
   Widget build(BuildContext context) {
