@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import 'package:cash_flip_app/providers/transactions_provider.dart';
 import 'package:cash_flip_app/widgets/date_selector.dart'; // Добавьте импорт
 import 'package:cash_flip_app/widgets/balance_app_bar.dart';
+import 'package:cash_flip_app/providers/currency_provider.dart';
+import 'package:flutter/scheduler.dart';
 
 class OverviewScreen extends StatefulWidget {
   @override
@@ -23,30 +25,132 @@ class _OverviewScreenState extends State<OverviewScreen> {
   );
 
   @override
+  void initState() {
+    super.initState();
+
+    // Изменить фильтр на предыдущий месяц, так как транзакции за май
+    final now = DateTime.now();
+    final lastMonth =
+        now.month == 1
+            ? DateTime(now.year - 1, 12)
+            : DateTime(now.year, now.month - 1);
+
+    _currentFilter = DateFilter(
+      type: DateFilterType.month,
+      startDate: DateTime(lastMonth.year, lastMonth.month, 1),
+      endDate: DateTime(lastMonth.year, lastMonth.month + 1, 0, 23, 59, 59),
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Принудительно обновляем данные при открытии экрана
+      await Provider.of<TransactionsProvider>(
+        context,
+        listen: false,
+      ).loadData();
+      await Provider.of<CategoriesProvider>(context, listen: false).loadData();
+      setState(() {}); // Обновляем UI после загрузки
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final transactionsProvider = Provider.of<TransactionsProvider>(context);
     final categoriesProvider = Provider.of<CategoriesProvider>(context);
+    final currencyProvider = Provider.of<CurrencyProvider>(context);
 
+    // Получаем все транзакции с применением фильтра по дате
     final filteredTransactions = transactionsProvider.getFilteredTransactions(
       _currentFilter,
     );
-    final expenseTransactions =
-        filteredTransactions.where((tx) => tx.amount < 0).toList();
-    final incomeTransactions =
-        filteredTransactions.where((tx) => tx.amount > 0).toList();
 
-    // Группировка по категориям
+    // Добавляем отладочную информацию
+    print('DEBUG: Обзор - найдено ${filteredTransactions.length} транзакций');
+
+    // Разделяем на расходы и доходы используя isExpense категории, а не только знак суммы
+    final expenseTransactions =
+        filteredTransactions.where((tx) {
+          if (tx.categoryId == null) {
+            // Если категория не указана, определяем по знаку суммы
+            return tx.amount < 0;
+          }
+
+          // Ищем категорию
+          Category? category;
+          try {
+            category = categoriesProvider.categories.firstWhere(
+              (c) => c.id == tx.categoryId.toString(),
+            );
+
+            // Если категория найдена, используем её флаг isExpense
+            if (category != null) {
+              return category.isExpense;
+            }
+          } catch (e) {
+            print('DEBUG: Ошибка поиска категории: $e');
+          }
+
+          // По умолчанию, используем знак суммы
+          return tx.amount < 0;
+        }).toList();
+
+    final incomeTransactions =
+        filteredTransactions.where((tx) {
+          if (tx.categoryId == null) {
+            return tx.amount > 0;
+          }
+
+          // Для income транзакций:
+          Category? category;
+          try {
+            category = categoriesProvider.categories.firstWhere(
+              (c) => c.id == tx.categoryId.toString(),
+            );
+
+            if (category != null) {
+              return !category.isExpense;
+            }
+          } catch (e) {
+            print('DEBUG: Ошибка поиска категории: $e');
+          }
+
+          return tx.amount > 0;
+        }).toList();
+
+    print(
+      'DEBUG: Обзор - найдено ${expenseTransactions.length} транзакций расходов',
+    );
+    print(
+      'DEBUG: Обзор - найдено ${incomeTransactions.length} транзакций доходов',
+    );
+
+    // Группировка по категориям с улучшенной обработкой
     final expenseByCategory = <String, double>{};
     for (var tx in expenseTransactions) {
-      expenseByCategory[tx.category ?? 'Без категории'] =
-          (expenseByCategory[tx.category ?? 'Без категории'] ?? 0) +
-          tx.amount.abs();
+      String categoryName = tx.category ?? 'Без категории';
+      double amount =
+          tx.amount.abs(); // Всегда используем положительное значение
+
+      expenseByCategory[categoryName] =
+          (expenseByCategory[categoryName] ?? 0) + amount;
     }
+
     final incomeByCategory = <String, double>{};
     for (var tx in incomeTransactions) {
-      incomeByCategory[tx.category ?? 'Без категории'] =
-          (incomeByCategory[tx.category ?? 'Без категории'] ?? 0) + tx.amount;
+      String categoryName = tx.category ?? 'Без категории';
+      double amount =
+          tx.amount.abs(); // Всегда используем положительное значение
+
+      incomeByCategory[categoryName] =
+          (incomeByCategory[categoryName] ?? 0) + amount;
     }
+
+    // Отладочная информация о категориях
+    print(
+      'DEBUG: Обзор - категории расходов: ${expenseByCategory.keys.join(", ")}',
+    );
+    print(
+      'DEBUG: Обзор - категории доходов: ${incomeByCategory.keys.join(", ")}',
+    );
 
     // Сортировка по сумме
     final sortedExpense =
@@ -218,7 +322,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
                 (c) => c.name == entry.key,
               );
             } catch (e) {
-              category = null;
+              // Категория не найдена, category остается null
+              print('DEBUG: Категория не найдена: ${entry.key}');
             }
             final percent = total > 0 ? entry.value / total : 0.0;
             return Padding(
@@ -278,13 +383,18 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 
-  // Замените _buildPieChart на этот метод:
+  // Замените вашу функцию _buildPieChart на эту:
   Widget _buildPieChart(
     List<MapEntry<String, double>> data,
     double total,
     CategoriesProvider categoriesProvider, {
     required bool isExpense,
   }) {
+    // Отладочная информация
+    print('DEBUG: Построение диаграммы - ${isExpense ? "расходы" : "доходы"}');
+    print('DEBUG: Количество категорий для диаграммы: ${data.length}');
+    print('DEBUG: Общая сумма: $total');
+
     if (data.isEmpty) {
       return Center(
         child: Text(
@@ -297,41 +407,45 @@ class _OverviewScreenState extends State<OverviewScreen> {
     // Берем топ-5 категорий, остальные объединяем в "Другое"
     final chartData = <ChartSampleData>[];
 
-    for (int i = 0; i < data.length; i++) {
-      if (i < 5) {
-        final entry = data[i];
-        Category? category;
-        try {
-          category = categoriesProvider.categories.firstWhere(
-            (c) => c.name == entry.key,
-          );
-        } catch (e) {
-          category = null;
-        }
+    // Обработка топ-5 категорий
+    for (int i = 0; i < data.length && i < 5; i++) {
+      final entry = data[i];
+      Category? category;
 
-        chartData.add(
-          ChartSampleData(
-            x: entry.key,
-            y: entry.value,
-            color:
-                category?.color ??
-                (isExpense ? Colors.pinkAccent : Colors.tealAccent),
-          ),
+      try {
+        category = categoriesProvider.categories.firstWhere(
+          (c) => c.name == entry.key,
         );
-      } else {
-        // Объединяем остальные категории в "Другое"
-        final otherValue = data
-            .skip(5)
-            .fold<double>(0, (sum, entry) => sum + entry.value);
+      } catch (e) {
+        // Category not found, category remains null
+        print('DEBUG: Ошибка поиска категории для диаграммы: $e');
+      }
 
-        if (otherValue > 0) {
-          chartData.add(
-            ChartSampleData(x: 'Другое', y: otherValue, color: Colors.grey),
-          );
-        }
-        break;
+      chartData.add(
+        ChartSampleData(
+          x: entry.key,
+          y: entry.value,
+          color:
+              category?.color ??
+              (isExpense ? Colors.pinkAccent : Colors.tealAccent),
+        ),
+      );
+    }
+
+    // Объединение остальных категорий в "Другое" если их больше 5
+    if (data.length > 5) {
+      final otherValue = data
+          .skip(5)
+          .fold<double>(0, (sum, entry) => sum + entry.value);
+
+      if (otherValue > 0) {
+        chartData.add(
+          ChartSampleData(x: 'Другое', y: otherValue, color: Colors.grey),
+        );
       }
     }
+
+    print('DEBUG: Построено ${chartData.length} элементов для диаграммы');
 
     return SfCircularChart(
       margin: EdgeInsets.zero,
@@ -356,32 +470,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
           dataLabelSettings: DataLabelSettings(
             isVisible: true,
             labelPosition: ChartDataLabelPosition.outside,
-            textStyle: TextStyle(color: Colors.white70, fontSize: 10),
-            connectorLineSettings: ConnectorLineSettings(
-              type: ConnectorType.line,
-              color: Colors.white30,
-            ),
-            builder: (data, point, series, pointIndex, seriesIndex) {
-              double percentage = (data.y / total) * 100;
-              return percentage > 5
-                  ? Container(
-                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Color(0xFF2A2935),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '${percentage.toStringAsFixed(0)}%',
-                      style: TextStyle(color: data.color, fontSize: 10),
-                    ),
-                  )
-                  : Container();
-            },
+            textStyle: TextStyle(color: Colors.white70, fontSize: 12),
           ),
-          radius: '80%',
-          innerRadius: '60%',
-          explode: true,
-          explodeOffset: '5%',
         ),
       ],
     );

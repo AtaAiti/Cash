@@ -62,6 +62,8 @@ class Transaction {
       note: json['note'],
     );
   }
+
+  get categoryId => null;
 }
 
 class TransactionsProvider with ChangeNotifier {
@@ -475,14 +477,44 @@ class TransactionsProvider with ChangeNotifier {
 
   // Фильтрация транзакций по дате
   List<Transaction> getFilteredTransactions(DateFilter filter) {
-    if (filter.type == DateFilterType.allTime) {
-      return [..._transactions];
-    }
+    List<Transaction> result = [..._transactions];
 
-    return _transactions.where((tx) {
-      return tx.date.isAfter(filter.startDate!) &&
-          tx.date.isBefore(filter.endDate!.add(Duration(seconds: 1)));
-    }).toList();
+    // Добавляем вывод для отладки
+    print('DEBUG: Фильтрация транзакций. Всего: ${result.length}');
+    print('DEBUG: Фильтр: ${filter.startDate} - ${filter.endDate}');
+
+    // Фильтрация по дате
+    result =
+        result.where((tx) {
+          final txDate = DateTime(tx.date.year, tx.date.month, tx.date.day);
+
+          final startDate = DateTime(
+            filter.startDate!.year,
+            filter.startDate!.month,
+            filter.startDate!.day,
+          );
+
+          final endDate = DateTime(
+            filter.endDate!.year,
+            filter.endDate!.month,
+            filter.endDate!.day,
+            23,
+            59,
+            59, // Включаем весь день
+          );
+
+          bool result =
+              txDate.isAfter(startDate.subtract(Duration(days: 1))) &&
+              txDate.isBefore(endDate.add(Duration(days: 1)));
+
+          print('DEBUG: Проверка транзакции ${tx.id} (${tx.date}): $result');
+
+          return result;
+        }).toList();
+
+    print('DEBUG: После фильтрации: ${result.length} транзакций');
+
+    return result;
   }
 
   // Получение транзакций по дням с фильтрацией по дате

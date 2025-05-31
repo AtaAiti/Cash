@@ -75,18 +75,31 @@ class _AccountsScreenState extends State<AccountsScreen> {
                           children: [
                             Row(
                               children: [
-                                Text(
-                                  'Все счета',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
+                                GestureDetector(
+                                  onTap: () {
+                                    print(
+                                      "DEBUG: Нажата кнопка 'Все счета' для выбора валют",
+                                    );
+                                    _showCurrencySelectionModal(context);
+                                  },
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Все счета',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      SizedBox(width: 4),
+                                      Icon(
+                                        Icons.arrow_drop_down,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                SizedBox(width: 4),
-                                Icon(
-                                  Icons.arrow_drop_down,
-                                  color: Colors.white,
-                                  size: 16,
                                 ),
                               ],
                             ),
@@ -154,8 +167,26 @@ class _AccountsScreenState extends State<AccountsScreen> {
                       Expanded(
                         child: InkWell(
                           onTap: () {
+                            print(
+                              "DEBUG: Нажата кнопка 'Счета'",
+                            ); // Добавьте отладочный вывод
                             setState(() {
                               _showAccounts = true;
+                              // Добавьте сюда дополнительную логику, если необходимо
+                              // Например, сброс фильтров
+                              _currentFilter = DateFilter(
+                                type: DateFilterType.month,
+                                startDate: DateTime(
+                                  DateTime.now().year,
+                                  DateTime.now().month,
+                                  1,
+                                ),
+                                endDate: DateTime(
+                                  DateTime.now().year,
+                                  DateTime.now().month + 1,
+                                  0,
+                                ),
+                              );
                             });
                           },
                           child: Container(
@@ -683,9 +714,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
             ),
             child: CurrencySelectionModal(
               onCurrencyChanged: (newCurrency) {
-                // Здесь можно добавить логику, которая должна выполняться сразу после выбора валюты
+                print("DEBUG: Выбрана валюта: $newCurrency");
                 setState(() {
-                  // Принудительное обновление UI
+                  // Обновляем UI после выбора валюты
                 });
               },
             ),
