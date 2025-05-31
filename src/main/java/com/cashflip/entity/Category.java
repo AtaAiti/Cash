@@ -7,7 +7,7 @@ import java.util.Objects;
 @Table(name = "categories")
 public class Category {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.IDENTITY) // Убедитесь, что ID генерируется правильно
     private Long id;
     
     private String name;

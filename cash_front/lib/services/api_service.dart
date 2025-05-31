@@ -400,9 +400,11 @@ class ApiService {
       final result = await post('categories', serverData);
       print('DEBUG: Ответ сервера при создании категории: $result');
 
-      // Если ID категории null, выведем предупреждение
+      // Предупреждение о проблеме с ID
       if (result != null && result['id'] == null) {
-        print('ПРЕДУПРЕЖДЕНИЕ: Сервер вернул категорию с null ID');
+        print(
+          'ПРЕДУПРЕЖДЕНИЕ: Сервер вернул категорию с null ID - проблема на стороне сервера',
+        );
       }
 
       return result;
@@ -558,53 +560,24 @@ class ApiService {
       final serverData = {...transactionData};
       serverData['accountId'] = accountId;
 
-      // Принудительно запрашиваем свежие категории с сервера
-      print('DEBUG: Запрос актуальных категорий с сервера');
-      final categories = await getCategories();
-
-      // Обработка категории
+      // Сохраняем категорию локально, так как сервер не может хранить категории
       if (serverData.containsKey('category') &&
           serverData['category'] != null &&
           serverData['category'].toString().isNotEmpty) {
         final categoryName = serverData['category'];
-        print('DEBUG: Категория в транзакции: $categoryName');
         print(
-          'DEBUG: Доступные категории на сервере: ${categories.map((c) => "${c['name']}:${c['id']}").toList()}',
+          'DEBUG: Транзакция с категорией "$categoryName", но сохраняем без привязки к категории',
         );
 
-        // Ищем категорию в полученном списке
-        int? categoryId;
-        for (var category in categories) {
-          if (category['name'] == categoryName) {
-            categoryId =
-                category['id'] is int
-                    ? category['id']
-                    : int.tryParse(category['id'].toString());
-            print('DEBUG: Найдена категория "$categoryName" с ID: $categoryId');
-            break;
-          }
-        }
+        // Удаляем поле category и categoryId, так как сервер не может их обработать
+        serverData.remove('category');
+        serverData.remove('categoryId');
 
-        if (categoryId != null) {
-          serverData['categoryId'] = categoryId;
-          print('DEBUG: Установлен ID категории: $categoryId для транзакции');
-        } else {
-          print(
-            'ПРЕДУПРЕЖДЕНИЕ: Категория "$categoryName" не найдена на сервере, создаем её',
-          );
-          // Создаем категорию, если её нет
-          final newCategory = await createCategory({
-            'name': categoryName,
-            'isExpense':
-                serverData['amount'] is double && serverData['amount'] < 0,
-            'color': 4280391411, // Стандартный цвет
-            'icon': 58136, // Стандартная иконка
-          });
-
-          if (newCategory != null && newCategory['id'] != null) {
-            serverData['categoryId'] = newCategory['id'];
-            print('DEBUG: Создана новая категория с ID: ${newCategory['id']}');
-          }
+        // Добавляем информацию о категории в описание для отладки
+        if (!serverData.containsKey('description') ||
+            serverData['description'] == null ||
+            serverData['description'].toString().isEmpty) {
+          serverData['description'] = "Категория: $categoryName";
         }
       }
 
