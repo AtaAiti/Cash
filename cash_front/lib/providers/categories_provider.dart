@@ -40,6 +40,7 @@ class Category {
     return Category(
       id: json['id'].toString(),
       name: json['name'],
+
       icon: IconData(json['iconCode'] ?? 0xe318, fontFamily: 'MaterialIcons'),
       color: Color(json['colorValue'] ?? 0xFF2196F3),
       isExpense: json['isExpense'] ?? true,
@@ -90,11 +91,9 @@ class CategoriesProvider with ChangeNotifier {
   Future<void> loadData() async {
     _isLoading = true;
     _error = null;
-    _categories = [];
-    print('DEBUG: Starting to load categories data');
     notifyListeners();
+
     try {
-      // Sever data loading
       print('DEBUG: Attempting to fetch categories from server');
       final categoriesDataFromServer = await _apiService.getCategories();
       print(
@@ -102,11 +101,35 @@ class CategoriesProvider with ChangeNotifier {
       );
 
       if (categoriesDataFromServer.isNotEmpty) {
-        _categories =
-            categoriesDataFromServer
-                .map<Category>((json) => Category.fromJson(json))
-                .toList();
+        _categories = [];
+
+        for (var categoryData in categoriesDataFromServer) {
+          final Category category = Category(
+            id: categoryData['id'].toString(),
+            name: categoryData['name'],
+            icon: IconData(
+              categoryData['iconCode'] ?? 0,
+              fontFamily: 'MaterialIcons',
+            ),
+            color: Color(categoryData['colorValue'] ?? 0xFF2196F3),
+            // Важно: правильно интерпретируйте поле expense
+            isExpense:
+                categoryData['expense'] ??
+                false, // Используйте значение с сервера
+            subcategories:
+                categoryData['subcategories'] != null
+                    ? List<String>.from(categoryData['subcategories'])
+                    : [],
+          );
+
+          _categories.add(category);
+        }
+
         print('DEBUG: Loaded ${_categories.length} categories from server');
+        // Проверьте правильность классификации
+        print(
+          'DEBUG: Expense categories: ${expenseCategories.length}, Income categories: ${incomeCategories.length}',
+        );
         await saveData();
       } else {
         print('DEBUG: No categories returned from server, checking local data');
@@ -118,12 +141,6 @@ class CategoriesProvider with ChangeNotifier {
       await _loadLocalData();
     } finally {
       _isLoading = false;
-      print(
-        'DEBUG: Categories loading complete. Categories count: ${_categories.length}',
-      );
-      print(
-        'DEBUG: Expense categories: ${expenseCategories.length}, Income categories: ${incomeCategories.length}',
-      );
       notifyListeners();
     }
   }

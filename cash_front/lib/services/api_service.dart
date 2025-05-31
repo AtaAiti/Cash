@@ -547,38 +547,42 @@ class ApiService {
         return null;
       }
 
-      // Проверка и преобразование ID счета
-      final accountId = int.tryParse(transactionData['accountId'].toString());
-      if (accountId == null) {
-        print(
-          'ERROR: Некорректный формат ID счета: ${transactionData['accountId']}',
-        );
-        throw Exception("Incorrect Account ID format");
-      }
-
       // Заменяем строковый ID на числовой
       final serverData = {...transactionData};
-      serverData['accountId'] = accountId;
+      serverData['accountId'] = int.tryParse(
+        transactionData['accountId'].toString(),
+      );
 
-      // Сохраняем категорию локально, так как сервер не может хранить категории
+      // Получаем актуальные категории с сервера
+      final serverCategories = await getCategories();
+      print('DEBUG: Доступные категории: $serverCategories');
+
+      // Если указана категория, ищем её ID в списке категорий
       if (serverData.containsKey('category') &&
           serverData['category'] != null &&
           serverData['category'].toString().isNotEmpty) {
         final categoryName = serverData['category'];
-        print(
-          'DEBUG: Транзакция с категорией "$categoryName", но сохраняем без привязки к категории',
-        );
+        print('DEBUG: Ищем категорию "$categoryName" на сервере');
 
-        // Удаляем поле category и categoryId, так как сервер не может их обработать
-        serverData.remove('category');
-        serverData.remove('categoryId');
+        // Получаем категорию по имени
+        final category = await getCategoryByName(categoryName);
 
-        // Добавляем информацию о категории в описание для отладки
-        if (!serverData.containsKey('description') ||
-            serverData['description'] == null ||
-            serverData['description'].toString().isEmpty) {
+        if (category != null && category['id'] != null) {
+          // Если категория найдена, используем её ID
+          serverData['categoryId'] = category['id'];
+          print(
+            'DEBUG: Найдена категория "$categoryName" с ID: ${category['id']}',
+          );
+        } else {
+          // Если категория не найдена, сохраняем информацию в описании
+          print(
+            'DEBUG: Категория "$categoryName" не найдена, сохраняем в описании',
+          );
           serverData['description'] = "Категория: $categoryName";
         }
+
+        // Удаляем поле category, т.к. сервер его не ожидает
+        serverData.remove('category');
       }
 
       // Преобразуем DateTime в строку ISO 8601
@@ -597,27 +601,22 @@ class ApiService {
     }
   }
 
-  // Добавьте этот метод для получения ID категории по имени
-  Future<int?> getCategoryIdByName(String categoryName) async {
+  // Добавьте новый метод для получения категории по имени
+  Future<Map<String, dynamic>?> getCategoryByName(String name) async {
     try {
+      // Делаем запрос на получение категорий
       final categories = await getCategories();
-      print(
-        'DEBUG: Ищем категорию "$categoryName" среди ${categories.length} категорий',
-      );
 
+      // Ищем категорию с указанным именем
       for (var category in categories) {
-        print('DEBUG: Сравниваем с категорией: ${category['name']}');
-        if (category['name'] == categoryName) {
-          final categoryId = category['id'];
-          print('DEBUG: Найдена категория с ID $categoryId');
-          return categoryId is int
-              ? categoryId
-              : int.tryParse(categoryId.toString());
+        if (category['name'] == name) {
+          return category;
         }
       }
+
       return null;
     } catch (e) {
-      print('ERROR: Ошибка при поиске ID категории: $e');
+      print('ERROR: Ошибка при поиске категории по имени: $e');
       return null;
     }
   }

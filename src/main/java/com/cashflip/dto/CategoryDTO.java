@@ -6,7 +6,7 @@ public class CategoryDTO {
     private Long id;
     private String name;
     private int iconCode;
-    private int colorValue;
+    private Long colorValue;
     private boolean isExpense;
     private List<String> subcategories;
 
@@ -35,12 +35,12 @@ public class CategoryDTO {
         this.iconCode = iconCode;
     }
 
-    public int getColorValue() {
+    public Long getColorValue() {
         return colorValue;
     }
 
     public void setColorValue(int colorValue) {
-        this.colorValue = colorValue;
+        this.colorValue = (long) colorValue;
     }
 
     public boolean isExpense() {

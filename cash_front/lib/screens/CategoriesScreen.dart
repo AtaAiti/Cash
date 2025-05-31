@@ -75,267 +75,286 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           });
         },
       ),
-      body: Consumer<CategoriesProvider>(
-        builder: (context, categoriesProvider, _) {
-          final categories =
-              _showExpenses
-                  ? categoriesProvider.expenseCategories
-                  : categoriesProvider.incomeCategories;
+      body: _buildCategoriesList(
+        transactionsProvider: transactionsProvider,
+        currencyProvider: currencyProvider,
+        targetCurrency: targetCurrency,
+        totalExpenses: totalExpenses,
+        totalIncome: totalIncome,
+      ),
+    );
+  }
 
-          // Если идет загрузка, показываем индикатор загрузки
-          if (categoriesProvider.isLoading) {
-            return Center(child: CircularProgressIndicator());
-          }
+  Widget _buildCategoriesList({
+    required TransactionsProvider transactionsProvider,
+    required CurrencyProvider currencyProvider,
+    required String targetCurrency,
+    required double totalExpenses,
+    required double totalIncome,
+  }) {
+    return Consumer<CategoriesProvider>(
+      builder: (context, categoriesProvider, _) {
+        // Правильная фильтрация категорий по типу
+        final categories =
+            _showExpenses
+                ? categoriesProvider.categories
+                    .where((c) => c.isExpense)
+                    .toList()
+                : categoriesProvider.categories
+                    .where((c) => !c.isExpense)
+                    .toList();
 
-          // Если список категорий пуст, показываем информативное сообщение
-          if (categories.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.category_outlined,
-                    size: 64,
-                    color: Colors.grey[400],
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'У вас пока нет категорий',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Нажмите + чтобы добавить новую категорию',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            );
-          }
+        print(
+          'DEBUG: CategoriesScreen - Building UI with ${categories.length} ${_showExpenses ? "expense" : "income"} categories',
+        );
+        print(
+          'DEBUG: CategoriesScreen - Total categories in provider: ${categoriesProvider.categories.length}',
+        );
+        print(
+          'DEBUG: CategoriesScreen - Categories data: ${categories.map((c) => c.name).toList()}',
+        );
 
-          print(
-            'DEBUG: CategoriesScreen - Building UI with ${categories.length} ${_showExpenses ? "expense" : "income"} categories',
-          );
-          print(
-            'DEBUG: CategoriesScreen - Total categories in provider: ${categoriesProvider.categories.length}',
-          );
-          print(
-            'DEBUG: CategoriesScreen - Categories data: ${categories.map((c) => c.name).toList()}',
-          );
+        // Если идет загрузка, показываем индикатор загрузки
+        if (categoriesProvider.isLoading) {
+          return Center(child: CircularProgressIndicator());
+        }
 
-          return SingleChildScrollView(
+        // Если список категорий пуст, показываем информативное сообщение
+        if (categories.isEmpty) {
+          return Center(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Верхние категории (первые 4)
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 16,
-                    runSpacing: 16,
-                    children:
-                        categories
-                            .take(4)
-                            .map(
-                              (cat) => _catCircle(
-                                context,
-                                cat.name,
-                                cat.icon,
-                                cat.color,
-                                '0 ₽',
-                              ),
-                            )
-                            .toList(),
-                  ),
+                Icon(
+                  Icons.category_outlined,
+                  size: 64,
+                  color: Colors.grey[400],
                 ),
-                // Центральный блок с круговой диаграммой и категориями по бокам
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Левые категории
-                      Expanded(
-                        child: Column(
-                          children:
-                              categories.length > 4
-                                  ? categories
-                                      .skip(4)
-                                      .take(2)
-                                      .map(
-                                        (cat) => Column(
-                                          children: [
-                                            _catCircle(
-                                              context,
-                                              cat.name,
-                                              cat.icon,
-                                              cat.color,
-                                              '0 ₽',
-                                              small: true,
-                                            ),
-                                            SizedBox(height: 12),
-                                          ],
-                                        ),
-                                      )
-                                      .toList()
-                                  : [SizedBox()],
-                        ),
-                      ),
-                      // Круговая диаграмма
-                      GestureDetector(
-                        onTap: _toggleCategoriesView,
-                        child: Container(
-                          width: 180,
-                          height: 180,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              CircularProgressIndicator(
-                                value: 1,
-                                strokeWidth: 18,
-                                backgroundColor: Colors.white12,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  _showExpenses
-                                      ? Color(0xFF4FC3F7)
-                                      : Colors.teal,
-                                ),
-                              ),
-                              Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    _showExpenses ? 'Расходы' : 'Доходы',
-                                    style: TextStyle(
-                                      color: Colors.white54,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  Text(
-                                    _showExpenses
-                                        ? currencyProvider.formatAmount(
-                                          totalExpenses,
-                                          targetCurrency,
-                                        )
-                                        : currencyProvider.formatAmount(
-                                          totalIncome,
-                                          targetCurrency,
-                                        ),
-                                    style: TextStyle(
-                                      color:
-                                          _showExpenses
-                                              ? Colors.pinkAccent
-                                              : Colors.tealAccent,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    _showExpenses
-                                        ? currencyProvider.formatAmount(
-                                          totalIncome,
-                                          targetCurrency,
-                                        )
-                                        : currencyProvider.formatAmount(
-                                          totalExpenses,
-                                          targetCurrency,
-                                        ),
-                                    style: TextStyle(
-                                      color:
-                                          _showExpenses
-                                              ? Colors.tealAccent
-                                              : Colors.pinkAccent,
-                                      fontSize: 18,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // Правые категории
-                      Expanded(
-                        child: Column(
-                          children:
-                              categories.length > 6
-                                  ? categories
-                                      .skip(6)
-                                      .take(2)
-                                      .map(
-                                        (cat) => Column(
-                                          children: [
-                                            _catCircle(
-                                              context,
-                                              cat.name,
-                                              cat.icon,
-                                              cat.color,
-                                              '0 ₽',
-                                              small: true,
-                                            ),
-                                            SizedBox(height: 12),
-                                          ],
-                                        ),
-                                      )
-                                      .toList()
-                                  : [SizedBox()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Нижние категории
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 16,
-                    runSpacing: 16,
-                    children:
-                        categories.length > 8
-                            ? categories
-                                .skip(8)
-                                .take(4)
-                                .map(
-                                  (cat) => _catCircle(
-                                    context,
-                                    cat.name,
-                                    cat.icon,
-                                    cat.color,
-                                    '0 ₽',
-                                  ),
-                                )
-                                .toList()
-                            : [],
-                  ),
-                ),
-                // Еще одна категория если осталась
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      categories.length > 12
-                          ? _catCircle(
-                            context,
-                            categories[12].name,
-                            categories[12].icon,
-                            categories[12].color,
-                            '0 ₽',
-                          )
-                          : SizedBox.shrink(),
-                    ],
+                SizedBox(height: 16),
+                Text(
+                  'У вас пока нет категорий',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[600],
                   ),
                 ),
                 SizedBox(height: 8),
+                Text(
+                  'Нажмите + чтобы добавить новую категорию',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
               ],
             ),
           );
-        },
-      ),
+        }
+
+        return SingleChildScrollView(
+          child: Column(
+            children: [
+              // Верхние категории (первые 4)
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 16,
+                  runSpacing: 16,
+                  children:
+                      categories
+                          .take(4)
+                          .map(
+                            (cat) => _catCircle(
+                              context,
+                              cat.name,
+                              cat.icon,
+                              cat.color,
+                              '0 ₽',
+                            ),
+                          )
+                          .toList(),
+                ),
+              ),
+              // Центральный блок с круговой диаграммой и категориями по бокам
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Левые категории
+                    Expanded(
+                      child: Column(
+                        children:
+                            categories.length > 4
+                                ? categories
+                                    .skip(4)
+                                    .take(2)
+                                    .map(
+                                      (cat) => Column(
+                                        children: [
+                                          _catCircle(
+                                            context,
+                                            cat.name,
+                                            cat.icon,
+                                            cat.color,
+                                            '0 ₽',
+                                            small: true,
+                                          ),
+                                          SizedBox(height: 12),
+                                        ],
+                                      ),
+                                    )
+                                    .toList()
+                                : [SizedBox()],
+                      ),
+                    ),
+                    // Круговая диаграмма
+                    GestureDetector(
+                      onTap: _toggleCategoriesView,
+                      child: Container(
+                        width: 180,
+                        height: 180,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                              value: 1,
+                              strokeWidth: 18,
+                              backgroundColor: Colors.white12,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                _showExpenses ? Color(0xFF4FC3F7) : Colors.teal,
+                              ),
+                            ),
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  _showExpenses ? 'Расходы' : 'Доходы',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Text(
+                                  _showExpenses
+                                      ? currencyProvider.formatAmount(
+                                        totalExpenses,
+                                        targetCurrency,
+                                      )
+                                      : currencyProvider.formatAmount(
+                                        totalIncome,
+                                        targetCurrency,
+                                      ),
+                                  style: TextStyle(
+                                    color:
+                                        _showExpenses
+                                            ? Colors.pinkAccent
+                                            : Colors.tealAccent,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  _showExpenses
+                                      ? currencyProvider.formatAmount(
+                                        totalIncome,
+                                        targetCurrency,
+                                      )
+                                      : currencyProvider.formatAmount(
+                                        totalExpenses,
+                                        targetCurrency,
+                                      ),
+                                  style: TextStyle(
+                                    color:
+                                        _showExpenses
+                                            ? Colors.tealAccent
+                                            : Colors.pinkAccent,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Правые категории
+                    Expanded(
+                      child: Column(
+                        children:
+                            categories.length > 6
+                                ? categories
+                                    .skip(6)
+                                    .take(2)
+                                    .map(
+                                      (cat) => Column(
+                                        children: [
+                                          _catCircle(
+                                            context,
+                                            cat.name,
+                                            cat.icon,
+                                            cat.color,
+                                            '0 ₽',
+                                            small: true,
+                                          ),
+                                          SizedBox(height: 12),
+                                        ],
+                                      ),
+                                    )
+                                    .toList()
+                                : [SizedBox()],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Нижние категории
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 16,
+                  runSpacing: 16,
+                  children:
+                      categories.length > 8
+                          ? categories
+                              .skip(8)
+                              .take(4)
+                              .map(
+                                (cat) => _catCircle(
+                                  context,
+                                  cat.name,
+                                  cat.icon,
+                                  cat.color,
+                                  '0 ₽',
+                                ),
+                              )
+                              .toList()
+                          : [],
+                ),
+              ),
+              // Еще одна категория если осталась
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    categories.length > 12
+                        ? _catCircle(
+                          context,
+                          categories[12].name,
+                          categories[12].icon,
+                          categories[12].color,
+                          '0 ₽',
+                        )
+                        : SizedBox.shrink(),
+                  ],
+                ),
+              ),
+              SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
   }
 
