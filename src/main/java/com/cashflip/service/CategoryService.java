@@ -62,41 +62,13 @@ public class CategoryService {
             }
             dto.setIconCode(iconCodeToSet);
 
-            int colorValueToSet = 0;
-            boolean updateCategoryInDb = false;
-            try {
-                if (categoryEntity.getColor() != null && !categoryEntity.getColor().isEmpty()) {
-                    long colorVal = Long.parseLong(categoryEntity.getColor());
-                    if (colorVal == 0) { // Если в БД хранится "0"
-                        colorValueToSet = generateRandomColor();
-                        categoryEntity.setColor(String.valueOf(colorValueToSet));
-                        updateCategoryInDb = true;
-                         System.out.println("Category " + categoryEntity.getName() + " had color 0, new random color generated: " + colorValueToSet);
-                    } else if (colorVal > Integer.MAX_VALUE || colorVal < Integer.MIN_VALUE) {
-                        System.err.println("Warning: colorValue " + colorVal + " for category " + categoryEntity.getName() + " is out of int range. Generating random color.");
-                        colorValueToSet = generateRandomColor();
-                        categoryEntity.setColor(String.valueOf(colorValueToSet));
-                        updateCategoryInDb = true;
-                    } else {
-                        colorValueToSet = (int) colorVal;
-                    }
-                } else { // Если цвет null или пустой в БД
-                    colorValueToSet = generateRandomColor();
-                    categoryEntity.setColor(String.valueOf(colorValueToSet));
-                    updateCategoryInDb = true;
-                     System.out.println("Category " + categoryEntity.getName() + " had no color, new random color generated: " + colorValueToSet);
-                }
-            } catch (NumberFormatException e) {
-                System.err.println("Error parsing colorValue for category " + categoryEntity.getName() + ", value: " + categoryEntity.getColor() + ". Generating random color.");
-                colorValueToSet = generateRandomColor();
-                categoryEntity.setColor(String.valueOf(colorValueToSet));
-                updateCategoryInDb = true;
-            }
-            dto.setColorValue(colorValueToSet);
-
-            if (updateCategoryInDb) {
-                categoryRepository.save(categoryEntity); // Сохраняем изменения в БД
-            }
+            // Always generate a random color for display for this category.
+            // This dynamically generated color is NOT saved back to the database.
+            // Any color value stored in the database for this category will be ignored during this fetch.
+            int dynamicRandomColor = generateRandomColor();
+            dto.setColorValue(dynamicRandomColor);
+            // Optional: Add a log to observe the behavior
+            // System.out.println("DEBUG: Category '" + categoryEntity.getName() + "' (ID: " + categoryEntity.getId() + ") dynamically assigned color " + dynamicRandomColor + ". Stored DB color was: '" + categoryEntity.getColor() + "'.");
             
             return dto;
         }).collect(Collectors.toList());
