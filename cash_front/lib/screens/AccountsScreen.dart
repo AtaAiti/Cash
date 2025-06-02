@@ -61,11 +61,24 @@ class _AccountsScreenState extends State<AccountsScreen> {
                       }
                     }
 
+                    print('DEBUG AppBar: Current displayCurrency: $targetCurrency');
+                    print('DEBUG AppBar: Calculated totalBalanceInRub: $totalBalanceInRub');
+
+                    // Конвертируем общую сумму из рублей в целевую валюту отображения
+                    final totalBalanceInTargetCurrency = currencyProvider.convert(
+                      totalBalanceInRub,
+                      '₽', // Исходная валюта общей суммы
+                      targetCurrency ?? '₽', // Целевая валюта для отображения
+                    );
+
+                    print('DEBUG AppBar: Value after conversion to $targetCurrency: $totalBalanceInTargetCurrency');
+
                     // Безопасная конвертация в целевую валюту
                     final formattedBalance = currencyProvider.formatAmount(
-                      totalBalanceInRub,
+                      totalBalanceInTargetCurrency, // Используем сконвертированную сумму
                       targetCurrency ?? '₽',
                     );
+                    print('DEBUG AppBar: Final formattedBalance for $targetCurrency: $formattedBalance');
 
                     return Row(
                       mainAxisSize: MainAxisSize.min,
@@ -90,6 +103,29 @@ class _AccountsScreenState extends State<AccountsScreen> {
                                         style: TextStyle(
                                           color: Colors.white,
                                           fontSize: 14,
+                                        ),
+                                      ),
+                                      SizedBox(width: 6),
+                                      Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blueGrey.withOpacity(
+                                            0.3,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          currencyProvider.displayCurrency,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
                                       SizedBox(width: 4),
@@ -407,28 +443,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
             return ListView(
               padding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
               children: [
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Счета',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        currencyProvider.formatAmount(
-                          regularTotal,
-                          currencyProvider.displayCurrency,
-                        ),
-                        style: TextStyle(color: Colors.white, fontSize: 16),
-                      ),
-                    ],
-                  ),
-                ),
                 ...regularAccounts
                     .map(
                       (account) => _buildDismissibleAccount(
@@ -598,10 +612,20 @@ class _AccountsScreenState extends State<AccountsScreen> {
                                   ) %
                                   2 !=
                               0;
+                          print('DEBUG MyFinances: currency key (entry.key) = ${entry.key}');
+                          print('DEBUG MyFinances: raw assets sum for ${entry.key} = $assets');
+                          print('DEBUG MyFinances: raw debts sum for ${entry.key} = $debts');
+
+                          final formattedAssets = currencyProvider.formatAmount(assets, entry.key);
+                          final formattedDebts = currencyProvider.formatAmount(debts, entry.key);
+
+                          print('DEBUG MyFinances: formatted assets for ${entry.key} = $formattedAssets');
+                          print('DEBUG MyFinances: formatted debts for ${entry.key} = $formattedDebts');
+
                           return _buildTableRow(
                             currency: entry.key,
                             assets: Text(
-                              currencyProvider.formatAmount(assets, entry.key),
+                              formattedAssets, // Используем отформатированную сумму
                               style: TextStyle(
                                 color:
                                     assets > 0
@@ -614,7 +638,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                             assetsColor:
                                 assets > 0 ? Colors.tealAccent : Colors.white54,
                             debt: Text(
-                              currencyProvider.formatAmount(debts, entry.key),
+                              formattedDebts, // Используем отформатированную сумму
                               style: TextStyle(
                                 color:
                                     debts > 0
@@ -715,9 +739,30 @@ class _AccountsScreenState extends State<AccountsScreen> {
             child: CurrencySelectionModal(
               onCurrencyChanged: (newCurrency) {
                 print("DEBUG: Выбрана валюта: $newCurrency");
+
+                // Получаем провайдер валют и устанавливаем новую валюту
+                final currencyProvider = Provider.of<CurrencyProvider>(
+                  context,
+                  listen: false,
+                );
+
+                // Устанавливаем валюту для отображения
+                currencyProvider.setDisplayCurrency(newCurrency);
+
+                // Важно: принудительно обновляем все виджеты в дереве,
+                // которые зависят от currencyProvider
                 setState(() {
-                  // Обновляем UI после выбора валюты
+                  // Это заставит перестроить интерфейс
                 });
+
+                // Показываем уведомление пользователю
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Валюта изменена на $newCurrency'),
+                    duration: Duration(seconds: 1),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
               },
             ),
           ),
@@ -902,21 +947,15 @@ class _AccountsScreenState extends State<AccountsScreen> {
     required IconData icon,
     required Color iconColor,
     required String title,
-    required String amount, // Оставляем параметр для обратной совместимости
+    required String amount,
     required Color amountColor,
     bool isMain = false,
     Account? account,
   }) {
-    // Получаем CurrencyProvider
-    final currencyProvider =
-        account != null
-            ? Provider.of<CurrencyProvider>(context, listen: false)
-            : null;
-
-    // Форматируем сумму, если возможно
+    // Отображаем оригинальную сумму без конвертации
     final formattedAmount =
-        (account != null && currencyProvider != null)
-            ? currencyProvider.formatAmount(account.balance, account.currency)
+        account != null
+            ? '${account.balance.toStringAsFixed(2)} ${account.currency}'
             : amount;
 
     return InkWell(
@@ -965,7 +1004,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  formattedAmount, // Используем отформатированную сумму
+                  formattedAmount, // Используем неконвертированную сумму
                   style: TextStyle(
                     color: amountColor,
                     fontSize: 16,

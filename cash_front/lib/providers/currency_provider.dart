@@ -181,48 +181,113 @@ class CurrencyProvider with ChangeNotifier {
     final normalizedFromCurrency = normalizeSymbol(fromCurrency);
     final normalizedToCurrency = normalizeSymbol(toCurrency);
 
-    // Если валюты совпадают, просто возвращаем сумму
+    // Если валюты совпадают после нормализации, не конвертируем
     if (normalizedFromCurrency == normalizedToCurrency) {
       return amount;
     }
 
-    // Получаем курсы
-    final fromRate = _conversionRates[normalizedFromCurrency];
-    final toRate = _conversionRates[normalizedToCurrency];
+    // Получаем обменный курс
+    double exchangeRate = _getExchangeRate(normalizedFromCurrency, normalizedToCurrency);
 
-    // Если курсов нет, возвращаем сумму как есть
-    if (fromRate == null || toRate == null) {
-      return amount;
-    }
+    // Выполняем конвертацию
+    double result = amount * exchangeRate;
 
-    return (amount * fromRate) / toRate;
+    print(
+      'DEBUG: CurrencyProvider.convert: $amount $normalizedFromCurrency -> $result $normalizedToCurrency (Rate: $exchangeRate)',
+    );
+
+    return result;
   }
 
   // Форматирование суммы с учетом валюты
-  String formatAmount(double amount, String currency) {
-    // Нормализация символа валюты используя общий метод
-    String normalizedCurrency = normalizeSymbol(currency);
+  String formatAmount(
+    double amount,
+    String fromCurrency, {
+    String? toCurrency, // Этот параметр теперь определяет, нужно ли конвертировать
+  }) {
+    // Нормализуем исходную валюту
+    String normalizedFrom = normalizeSymbol(fromCurrency);
 
-    // Убедимся, что данные для валюты существуют
-    if (!_currencyData.containsKey(normalizedCurrency)) {
+    // Определяем целевую валюту для форматирования и возможной конвертации
+    String targetFormatCurrency;
+    double amountToFormat;
+
+    if (toCurrency != null) {
+      // Если toCurrency указан, нормализуем его
+      String normalizedTo = normalizeSymbol(toCurrency);
+      if (normalizedFrom == normalizedTo) {
+        // Валюты совпадают, конвертация не нужна
+        amountToFormat = amount;
+        targetFormatCurrency = normalizedTo;
+      } else {
+        // Валюты разные, нужна конвертация
+        amountToFormat = convert(amount, normalizedFrom, normalizedTo);
+        targetFormatCurrency = normalizedTo;
+      }
+    } else {
+      // Если toCurrency НЕ указан, форматируем в ИСХОДНОЙ валюте (fromCurrency)
+      amountToFormat = amount;
+      targetFormatCurrency = normalizedFrom; // Форматируем в исходной валюте
+    }
+
+    // Получаем данные для форматирования (положение символа, кол-во знаков после запятой)
+    final currencyDetails = _currencyData[targetFormatCurrency] ??
+        _currencyData['₽']; // По умолчанию используем данные для рубля
+    final symbolPosition = currencyDetails?['symbolPosition'] ?? 'after';
+    final decimalPlaces = currencyDetails?['decimalPlaces'] ?? 2;
+
+    String formattedAmount = amountToFormat.toStringAsFixed(decimalPlaces);
+
+    // Форматируем с учетом положения символа
+    if (symbolPosition == 'before') {
+      return '$targetFormatCurrency $formattedAmount';
+    } else {
+      return '$formattedAmount $targetFormatCurrency';
+    }
+  }
+
+  double _getExchangeRate(String fromCurrency, String toCurrency) {
+    // Нормализация символов валют перед использованием
+    final normalizedFrom = normalizeSymbol(fromCurrency);
+    final normalizedTo = normalizeSymbol(toCurrency);
+
+    // Получаем курсы из _conversionRates. Они все относительно рубля.
+    // Например, _conversionRates['\$'] - это курс USD к RUB (сколько USD за 1 RUB)
+    // _conversionRates['€'] - это курс EUR к RUB (сколько EUR за 1 RUB)
+
+    final rateFromRub = _conversionRates[normalizedFrom]; // Курс fromCurrency к RUB
+    final rateToRub = _conversionRates[normalizedTo];   // Курс toCurrency к RUB
+
+    if (rateFromRub == null || rateToRub == null) {
       print(
-        'DEBUG: CurrencyProvider - No formatting data for $normalizedCurrency, using default',
+        'WARNING: CurrencyProvider - Missing rate for $normalizedFrom or $normalizedTo in _getExchangeRate. Using 1.0 as fallback.',
       );
-      normalizedCurrency =
-          _displayCurrency; // По умолчанию используем текущую валюту
+      return 1.0; // Возвращаем 1.0 в случае отсутствия курса, чтобы избежать ошибок деления на ноль или null
     }
 
-    final decimalPlaces =
-        _currencyData[normalizedCurrency]!['decimalPlaces'] as int;
-    final formattedNumber = amount.toStringAsFixed(decimalPlaces);
-
-    switch (_currencyData[normalizedCurrency]!['symbolPosition']) {
-      case 'before':
-        return '$normalizedCurrency$formattedNumber';
-      case 'after':
-      default:
-        return '$formattedNumber $normalizedCurrency';
+    // Если fromCurrency - это рубль, то курс к toCurrency - это просто rateToRub
+    // Пример: RUB -> USD. rateFromRub = 1.0 (RUB/RUB). rateToRub = 0.011 (USD/RUB)
+    // Курс RUB к USD = 0.011 / 1.0 = 0.011 (сколько USD за 1 RUB)
+    if (normalizedFrom == '₽') {
+      return rateToRub;
     }
+
+    // Если toCurrency - это рубль, то курс fromCurrency к рублю - это 1.0 / rateFromRub
+    // Пример: USD -> RUB. rateFromRub = 0.011 (USD/RUB). rateToRub = 1.0 (RUB/RUB)
+    // Курс USD к RUB = 1.0 / 0.011 (сколько RUB за 1 USD)
+    if (normalizedTo == '₽') {
+      if (rateFromRub == 0) return 1.0; // Защита от деления на ноль
+      return 1.0 / rateFromRub;
+    }
+
+    // Для конвертации между двумя валютами (не рублями), например USD -> EUR
+    // Нужно сначала перевести fromCurrency в рубли, а затем рубли в toCurrency.
+    // (amountInFromCurrency / rateFromRub) * rateToRub
+    // Значит, итоговый курс fromCurrency к toCurrency будет rateToRub / rateFromRub
+    // Пример: USD -> EUR. rateFromRub = 0.011 (USD/RUB). rateToRub = 0.010 (EUR/RUB)
+    // Курс USD к EUR = 0.010 (EUR/RUB) / 0.011 (USD/RUB) = (EUR/USD) (сколько EUR за 1 USD)
+    if (rateFromRub == 0) return 1.0; // Защита от деления на ноль
+    return rateToRub / rateFromRub;
   }
 
   // Format amount with proper currency symbol

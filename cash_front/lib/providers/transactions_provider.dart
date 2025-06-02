@@ -4,6 +4,7 @@ import 'package:cash_flip_app/widgets/date_selector.dart';
 import 'package:cash_flip_app/services/api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cash_flip_app/providers/currency_provider.dart';
 
 class Transaction {
   final String id;
@@ -578,24 +579,38 @@ class TransactionsProvider with ChangeNotifier {
 
   // Получение общих сумм по категориям с фильтрацией
   Map<String, double> getFilteredCategoryTotals({
+    required CurrencyProvider currencyProvider,
     bool onlyExpenses = true,
     DateFilter? filter,
   }) {
     final Map<String, double> result = {};
+    final String targetCurrency = currencyProvider.displayCurrency;
 
     final filteredTransactions =
         filter != null ? getFilteredTransactions(filter) : [..._transactions];
 
-    final transactions =
+    final transactionsToProcess =
         onlyExpenses
             ? filteredTransactions.where((tx) => tx.amount < 0)
             : filteredTransactions.where((tx) => tx.amount > 0);
 
-    for (var tx in transactions) {
+    for (var tx in transactionsToProcess) {
+      double amountInTargetCurrency;
+      // Проверяем, нужно ли конвертировать
+      if (currencyProvider.normalizeSymbol(tx.currency) == targetCurrency) {
+        amountInTargetCurrency = tx.amount.abs();
+      } else {
+        amountInTargetCurrency = currencyProvider
+            .convert(tx.amount.abs(), tx.currency, targetCurrency);
+      }
+
       result[tx.category ?? 'Без категории'] =
-          (result[tx.category ?? 'Без категории'] ?? 0) + tx.amount.abs();
+          (result[tx.category ?? 'Без категории'] ?? 0) +
+              amountInTargetCurrency;
     }
 
+    print(
+        'DEBUG getFilteredCategoryTotals: Resulting totals for ${onlyExpenses ? "Expenses" : "Income"} in $targetCurrency: $result');
     return result;
   }
 

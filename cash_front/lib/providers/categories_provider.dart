@@ -41,8 +41,8 @@ class Category {
       id: json['id'].toString(),
       name: json['name'],
 
-      icon: IconData(json['iconCode'] ?? 0xe318, fontFamily: 'MaterialIcons'),
-      color: Color(json['colorValue'] ?? 0xFF2196F3),
+      icon: IconData(json['iconCode'] == null || json['iconCode'] == 0 ? 0xe148 : json['iconCode'], fontFamily: 'MaterialIcons'),
+      color: Color(json['colorValue'] == null || json['colorValue'] == 0 ? 0xFF9E9E9E : json['colorValue']),
       isExpense: json['isExpense'] ?? true,
       subcategories: List<String>.from(json['subcategories'] ?? []),
     );
@@ -108,11 +108,10 @@ class CategoriesProvider with ChangeNotifier {
             id: categoryData['id'].toString(),
             name: categoryData['name'],
             icon: IconData(
-              categoryData['iconCode'] ?? 0,
+              categoryData['iconCode'] == null || categoryData['iconCode'] == 0 ? 0xe148 : categoryData['iconCode'],
               fontFamily: 'MaterialIcons',
             ),
-            color: Color(categoryData['colorValue'] ?? 0xFF2196F3),
-            // Важно: правильно интерпретируйте поле expense
+            color: Color(categoryData['colorValue'] == null || categoryData['colorValue'] == 0 ? 0xFF9E9E9E : categoryData['colorValue']),
             isExpense:
                 categoryData['expense'] ??
                 false, // Используйте значение с сервера
@@ -121,6 +120,10 @@ class CategoriesProvider with ChangeNotifier {
                     ? List<String>.from(categoryData['subcategories'])
                     : [],
           );
+
+          // Отладочный вывод для каждой категории
+          print('DEBUG CategoryLoad: name=${categoryData['name']}, iconCode=${categoryData['iconCode']}, colorValue=${categoryData['colorValue']}, isExpense=${categoryData['expense']}');
+          print('DEBUG CategoryLoad: Parsed as: icon=${category.icon.codePoint}, color=${category.color.value}, isExpense=${category.isExpense}');
 
           _categories.add(category);
         }
@@ -198,21 +201,28 @@ class CategoriesProvider with ChangeNotifier {
 
     try {
       // Добавляем на сервер
-      final result = await _apiService.createCategory(category.toJson());
+      // final result = await _apiService.createCategory(category.toJson()); // Старый вариант
+
+      // Новый вариант: формируем полезную нагрузку с ожидаемыми ключами 'icon' и 'color'
+      final Map<String, dynamic> apiPayload = {
+        'name': category.name,
+        'isExpense': category.isExpense, // Используем 'isExpense' как в модели Category
+        'icon': category.icon.codePoint,   // Ключ 'icon' для кода иконки
+        'color': category.color.value,  // Ключ 'color' для значения цвета
+        'subcategories': category.subcategories, // Передаем и подкатегории
+      };
+      final result = await _apiService.createCategory(apiPayload);
 
       if (result != null) {
-        // Создаем категорию из ответа сервера, но сохраняем оригинальное значение isExpense
+        // Создаем категорию из ответа сервера, но используем ОРИГИНАЛЬНЫЕ иконку, цвет и тип,
+        // так как сервер может их искажать или возвращать некорректно.
         final newCategory = Category(
-          id: result['id'].toString(),
-          name: result['name'],
-          icon: IconData(
-            result['iconCode'] ?? 0xe318,
-            fontFamily: 'MaterialIcons',
-          ),
-          color: Color(result['colorValue'] ?? 0xFF2196F3),
-          isExpense:
-              category.isExpense, // Используем значение из исходной категории
-          subcategories: List<String>.from(result['subcategories'] ?? []),
+          id: result['id'].toString(), // ID из ответа сервера
+          name: result['name'],         // Имя из ответа сервера (на случай модификации сервером)
+          icon: category.icon,          // Оригинальная иконка, выбранная пользователем
+          color: category.color,        // Оригинальный цвет, выбранный пользователем
+          isExpense: category.isExpense,  // Оригинальный тип (расход/доход)
+          subcategories: List<String>.from(result['subcategories'] ?? []), // Подкатегории из ответа сервера
         );
         _categories.add(newCategory);
       } else {

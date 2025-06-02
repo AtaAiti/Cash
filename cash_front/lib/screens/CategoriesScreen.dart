@@ -34,10 +34,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
     // Получаем общие суммы по категориям
     final expenseTotals = transactionsProvider.getFilteredCategoryTotals(
+      currencyProvider: currencyProvider,
       onlyExpenses: true,
       filter: _currentFilter,
     );
     final incomeTotals = transactionsProvider.getFilteredCategoryTotals(
+      currencyProvider: currencyProvider,
       onlyExpenses: false,
       filter: _currentFilter,
     );
@@ -234,43 +236,42 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                                     fontSize: 16,
                                   ),
                                 ),
-                                Text(
-                                  _showExpenses
-                                      ? currencyProvider.formatAmount(
-                                        totalExpenses,
-                                        targetCurrency,
-                                      )
-                                      : currencyProvider.formatAmount(
-                                        totalIncome,
-                                        targetCurrency,
+                                Builder(builder: (context) {
+                                  final expensesToDisplay = _showExpenses ? totalExpenses : totalIncome;
+                                  final incomeToDisplay = _showExpenses ? totalIncome : totalExpenses;
+                                  final colorExpenses = _showExpenses ? Colors.pinkAccent : Colors.tealAccent;
+                                  final colorIncome = _showExpenses ? Colors.tealAccent : Colors.pinkAccent;
+
+                                  print('DEBUG CentralCircle: _showExpenses: $_showExpenses');
+                                  print('DEBUG CentralCircle: Raw totalExpenses: $totalExpenses, Raw totalIncome: $totalIncome');
+                                  print('DEBUG CentralCircle: Expenses to display: $expensesToDisplay, Income to display: $incomeToDisplay');
+
+                                  final formattedExpenses = currencyProvider.formatAmount(expensesToDisplay, targetCurrency);
+                                  final formattedIncome = currencyProvider.formatAmount(incomeToDisplay, targetCurrency);
+
+                                  print('DEBUG CentralCircle: Formatted expenses: $formattedExpenses, Formatted income: $formattedIncome');
+
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        formattedExpenses,
+                                        style: TextStyle(
+                                          color: colorExpenses,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                  style: TextStyle(
-                                    color:
-                                        _showExpenses
-                                            ? Colors.pinkAccent
-                                            : Colors.tealAccent,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                Text(
-                                  _showExpenses
-                                      ? currencyProvider.formatAmount(
-                                        totalIncome,
-                                        targetCurrency,
-                                      )
-                                      : currencyProvider.formatAmount(
-                                        totalExpenses,
-                                        targetCurrency,
+                                      Text(
+                                        formattedIncome,
+                                        style: TextStyle(
+                                          color: colorIncome,
+                                          fontSize: 18,
+                                        ),
                                       ),
-                                  style: TextStyle(
-                                    color:
-                                        _showExpenses
-                                            ? Colors.tealAccent
-                                            : Colors.pinkAccent,
-                                    fontSize: 18,
-                                  ),
-                                ),
+                                    ],
+                                  );
+                                }),
                               ],
                             ),
                           ],
@@ -387,15 +388,21 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     final categoryTotals =
         _showExpenses
             ? transactionsProvider.getFilteredCategoryTotals(
+              currencyProvider: currencyProvider,
               onlyExpenses: true,
               filter: _currentFilter,
             )
             : transactionsProvider.getFilteredCategoryTotals(
+              currencyProvider: currencyProvider,
               onlyExpenses: false,
               filter: _currentFilter,
             );
 
     final categoryAmount = categoryTotals[label] ?? 0.0;
+
+    print('DEBUG _catCircle: Category Name (label): "$label"');
+    print('DEBUG _catCircle: Available category totals keys: ${categoryTotals.keys.toList()}');
+    print('DEBUG _catCircle: Calculated amount for "$label": $categoryAmount');
 
     // Форматируем сумму с помощью currencyProvider
     final formattedAmount = currencyProvider.formatAmount(

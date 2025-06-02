@@ -57,6 +57,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
     final transactionsProvider = Provider.of<TransactionsProvider>(context);
     final categoriesProvider = Provider.of<CategoriesProvider>(context);
     final currencyProvider = Provider.of<CurrencyProvider>(context);
+    final targetDisplayCurrency = currencyProvider.displayCurrency; // Получаем целевую валюту
 
     // Получаем все транзакции с применением фильтра по дате
     final filteredTransactions = transactionsProvider.getFilteredTransactions(
@@ -127,21 +128,47 @@ class _OverviewScreenState extends State<OverviewScreen> {
     final expenseByCategory = <String, double>{};
     for (var tx in expenseTransactions) {
       String categoryName = tx.category ?? 'Без категории';
-      double amount =
-          tx.amount.abs(); // Всегда используем положительное значение
+      double amount = tx.amount.abs(); // Всегда используем положительное значение
+
+      // Конвертируем сумму транзакции в targetDisplayCurrency
+      double convertedAmount;
+      if (currencyProvider.normalizeSymbol(tx.currency) == targetDisplayCurrency) {
+        convertedAmount = amount;
+      } else {
+        convertedAmount = currencyProvider.convert(
+          amount,
+          tx.currency,
+          targetDisplayCurrency,
+        );
+      }
 
       expenseByCategory[categoryName] =
-          (expenseByCategory[categoryName] ?? 0) + amount;
+          (expenseByCategory[categoryName] ?? 0) + convertedAmount;
     }
 
     final incomeByCategory = <String, double>{};
     for (var tx in incomeTransactions) {
       String categoryName = tx.category ?? 'Без категории';
-      double amount =
-          tx.amount.abs(); // Всегда используем положительное значение
+      // Для доходов мы обычно используем оригинальный знак, но для конвертации суммы нужен abs,
+      // а затем, если это доход, он будет добавлен как есть.
+      // Здесь логика должна быть аккуратной: конвертируем abs, а потом решаем, прибавлять или вычитать.
+      // Но так как мы уже отфильтровали incomeTransactions, то amount > 0.
+      double amount = tx.amount.abs(); // tx.amount здесь всегда > 0
+
+      // Конвертируем сумму транзакции в targetDisplayCurrency
+      double convertedAmount;
+      if (currencyProvider.normalizeSymbol(tx.currency) == targetDisplayCurrency) {
+        convertedAmount = amount;
+      } else {
+        convertedAmount = currencyProvider.convert(
+          amount,
+          tx.currency,
+          targetDisplayCurrency,
+        );
+      }
 
       incomeByCategory[categoryName] =
-          (incomeByCategory[categoryName] ?? 0) + amount;
+          (incomeByCategory[categoryName] ?? 0) + convertedAmount;
     }
 
     // Отладочная информация о категориях
@@ -163,11 +190,38 @@ class _OverviewScreenState extends State<OverviewScreen> {
     // Общие суммы
     final totalExpenses = expenseTransactions.fold<double>(
       0,
-      (sum, tx) => sum + tx.amount.abs(),
+      (sum, tx) {
+        double amount = tx.amount.abs();
+        double convertedAmount;
+        if (currencyProvider.normalizeSymbol(tx.currency) == targetDisplayCurrency) {
+          convertedAmount = amount;
+        } else {
+          convertedAmount = currencyProvider.convert(
+            amount,
+            tx.currency,
+            targetDisplayCurrency,
+          );
+        }
+        return sum + convertedAmount;
+      },
     );
     final totalIncome = incomeTransactions.fold<double>(
       0,
-      (sum, tx) => sum + tx.amount,
+      (sum, tx) {
+        // tx.amount здесь всегда > 0
+        double amount = tx.amount;
+        double convertedAmount;
+        if (currencyProvider.normalizeSymbol(tx.currency) == targetDisplayCurrency) {
+          convertedAmount = amount;
+        } else {
+          convertedAmount = currencyProvider.convert(
+            amount,
+            tx.currency,
+            targetDisplayCurrency,
+          );
+        }
+        return sum + convertedAmount;
+      },
     );
 
     return Scaffold(
@@ -301,6 +355,10 @@ class _OverviewScreenState extends State<OverviewScreen> {
     double total, {
     required bool isExpense,
   }) {
+    // Получаем CurrencyProvider для форматирования сумм
+    final currencyProvider = Provider.of<CurrencyProvider>(context, listen: false);
+    final targetDisplayCurrency = currencyProvider.displayCurrency;
+
     return ListView(
       padding: EdgeInsets.all(16),
       children: [
@@ -366,7 +424,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '${entry.value.toStringAsFixed(2)} ₽',
+                        // Используем formatAmount для отображения суммы
+                        currencyProvider.formatAmount(entry.value, targetDisplayCurrency),
                         style: TextStyle(color: Colors.white, fontSize: 16),
                       ),
                       Text(

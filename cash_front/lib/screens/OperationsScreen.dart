@@ -10,6 +10,7 @@ import 'package:cash_flip_app/widgets/search_transactions_modal.dart';
 import 'package:cash_flip_app/widgets/transaction_details_modal.dart';
 import 'package:cash_flip_app/widgets/date_selector.dart'; // Добавьте импорт
 import 'package:cash_flip_app/widgets/balance_app_bar.dart';
+import 'package:cash_flip_app/providers/currency_provider.dart';
 
 class OperationsScreen extends StatefulWidget {
   @override
@@ -236,10 +237,26 @@ class _OperationsScreenState extends State<OperationsScreen> {
     String month,
     List<Transaction> transactions,
   ) {
-    // Расчет суммы транзакций за день
+    // Получаем CurrencyProvider
+    final currencyProvider = Provider.of<CurrencyProvider>(context, listen: false);
+    final targetDisplayCurrency = currencyProvider.displayCurrency;
+
+    // Расчет суммы транзакций за день с конвертацией
     final totalAmount = transactions.fold<double>(
       0,
-      (sum, tx) => sum + tx.amount,
+      (sum, tx) {
+        double convertedAmount;
+        if (currencyProvider.normalizeSymbol(tx.currency) == targetDisplayCurrency) {
+          convertedAmount = tx.amount;
+        } else {
+          convertedAmount = currencyProvider.convert(
+            tx.amount,
+            tx.currency,
+            targetDisplayCurrency,
+          );
+        }
+        return sum + convertedAmount;
+      },
     );
 
     return Padding(
@@ -273,7 +290,8 @@ class _OperationsScreenState extends State<OperationsScreen> {
               ),
               Spacer(),
               Text(
-                '${totalAmount.abs().toStringAsFixed(0)} ₽',
+                // Используем formatAmount для отображения общей суммы дня
+                currencyProvider.formatAmount(totalAmount.abs(), targetDisplayCurrency, toCurrency: targetDisplayCurrency),
                 style: TextStyle(
                   color:
                       totalAmount < 0 ? Colors.pinkAccent : Colors.tealAccent,
@@ -301,6 +319,9 @@ class _OperationsScreenState extends State<OperationsScreen> {
       context,
       listen: false,
     );
+    // Получаем CurrencyProvider
+    final currencyProvider = Provider.of<CurrencyProvider>(context, listen: false);
+    final targetDisplayCurrency = currencyProvider.displayCurrency;
 
     // Ищем категорию по имени
     String? categoryName = tx.category;
@@ -410,7 +431,8 @@ class _OperationsScreenState extends State<OperationsScreen> {
             ),
             SizedBox(width: 12),
             Text(
-              '${tx.amount.abs()} ₽',
+              // Используем formatAmount для отображения суммы транзакции
+              currencyProvider.formatAmount(tx.amount.abs(), tx.currency, toCurrency: targetDisplayCurrency),
               style: TextStyle(
                 color: tx.amount < 0 ? Colors.pinkAccent : Colors.tealAccent,
                 fontSize: 15,

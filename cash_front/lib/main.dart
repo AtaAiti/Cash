@@ -205,32 +205,67 @@ class BalanceData {
       context,
       listen: false,
     );
-
-    // Общий баланс по всем счетам
-    final totalBalance = accountsProvider.accounts.fold<double>(
-      0,
-      (sum, account) => sum + account.balance,
+    final currencyProvider = Provider.of<CurrencyProvider>(
+      context,
+      listen: false,
     );
+    final targetDisplayCurrency = currencyProvider.displayCurrency;
+
+    // Общий баланс по всем счетам в displayCurrency
+    double totalBalanceInDisplayCurrency = 0;
+    for (var account in accountsProvider.accounts) {
+      // Конвертируем баланс каждого счета в targetDisplayCurrency
+      // Если валюта счета совпадает с targetDisplayCurrency, конвертация не нужна
+      if (currencyProvider.normalizeSymbol(account.currency) == targetDisplayCurrency) {
+        totalBalanceInDisplayCurrency += account.balance;
+      } else {
+        totalBalanceInDisplayCurrency += currencyProvider.convert(
+          account.balance,
+          account.currency, // from
+          targetDisplayCurrency, // to
+        );
+      }
+    }
 
     // Фильтрованные или все транзакции
-    final transactions =
+    final transactionsToProcess =
         filter != null
             ? transactionsProvider.getFilteredTransactions(filter)
             : transactionsProvider.transactions;
 
-    // Общая сумма расходов и доходов
-    final totalExpenses = transactions
-        .where((tx) => tx.amount < 0)
-        .fold<double>(0, (sum, tx) => sum + tx.amount.abs());
+    // Общая сумма расходов и доходов в targetDisplayCurrency
+    double convertedTotalExpenses = 0;
+    double convertedTotalIncome = 0;
 
-    final totalIncome = transactions
-        .where((tx) => tx.amount > 0)
-        .fold<double>(0, (sum, tx) => sum + tx.amount);
+    for (var tx in transactionsToProcess) {
+      double amountInTargetCurrency;
+      // Определяем абсолютную сумму для конвертации (расходы всегда положительные для расчета)
+      double absAmount = tx.amount.abs();
+
+      if (currencyProvider.normalizeSymbol(tx.currency) == targetDisplayCurrency) {
+        amountInTargetCurrency = absAmount;
+      } else {
+        amountInTargetCurrency = currencyProvider.convert(
+          absAmount,
+          tx.currency,
+          targetDisplayCurrency,
+        );
+      }
+
+      if (tx.amount < 0) {
+        convertedTotalExpenses += amountInTargetCurrency;
+      } else if (tx.amount > 0) {
+        // Для доходов используем оригинальный знак, но сумма уже absAmount, поэтому просто amountInTargetCurrency
+        // Фактически, amountInTargetCurrency здесь это absAmount, конвертированный.
+        // Если tx.amount был положительным, то absAmount == tx.amount.
+        convertedTotalIncome += amountInTargetCurrency;
+      }
+    }
 
     return BalanceData(
-      totalBalance: totalBalance,
-      totalExpenses: totalExpenses,
-      totalIncome: totalIncome,
+      totalBalance: totalBalanceInDisplayCurrency,
+      totalExpenses: convertedTotalExpenses,
+      totalIncome: convertedTotalIncome,
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:cash_flip_app/providers/accounts_provider.dart';
 import 'package:cash_flip_app/widgets/date_selector.dart';
 import 'package:cash_flip_app/main.dart';
+import 'package:cash_flip_app/providers/currency_provider.dart';
 
 class BalanceAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -26,6 +27,7 @@ class BalanceAppBar extends StatelessWidget implements PreferredSizeWidget {
       context,
       filter: currentFilter,
     );
+    final currencyProvider = Provider.of<CurrencyProvider>(context, listen: false);
 
     return AppBar(
       backgroundColor: Color(0xFF23222A),
@@ -48,7 +50,7 @@ class BalanceAppBar extends StatelessWidget implements PreferredSizeWidget {
           Text(title, style: TextStyle(color: Colors.white, fontSize: 14)),
           SizedBox(width: 12),
           Text(
-            '${balance.totalBalance.toStringAsFixed(2)} ₽',
+            currencyProvider.formatAmount(balance.totalBalance, currencyProvider.displayCurrency),
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
