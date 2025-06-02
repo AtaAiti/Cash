@@ -50,7 +50,7 @@ class Account {
   factory Account.fromJson(Map<String, dynamic> json) {
     // Отладка: какие значения приходят
     print(
-      'DEBUG Account.fromJson: input currency="${json['currency']}", input accountType="${json['accountType']}"',
+      'DEBUG Account.fromJson: input currency="${json['currency']}", input accountType="${json['accountType']}", colorValue="${json['colorValue']}", iconCode="${json['iconCode']}"',
     );
 
     // Нормализуем валюту при создании аккаунта из JSON
@@ -83,7 +83,7 @@ class Account {
               : double.parse(json['balance'].toString()),
       currency: normalizedCurrency, // Используем нормализованную валюту
       icon: IconData(json['iconCode'] ?? 0xe39d, fontFamily: 'MaterialIcons'),
-      color: Color(json['colorValue'] ?? 0xFF2196F3),
+      color: Color(json['colorValue'] == null || json['colorValue'] == 0 ? 0xFF9E9E9E : json['colorValue']),
       isMain: json['isMain'] ?? false,
       description: json['description'],
     );
@@ -173,25 +173,20 @@ class AccountsProvider with ChangeNotifier {
             decoded
                 .map(
                   (item) => Account(
-                    // Убедитесь, что Account.fromJson используется, если он есть
                     id:
                         item['id']
-                            .toString(), // Пример, если ID должен быть строкой
+                            .toString(), 
                     name: item['name'],
                     accountType: item['accountType'],
                     balance: (item['balance'] as num).toDouble(),
                     currency: item['currency'],
                     icon: IconData(
-                      item['iconCode'] ??
-                          (item['icon'] is int
-                              ? item['icon']
-                              : 0xe39d), // Обработка старого и нового формата
+                      item['iconCode'] ?? 0xe39d, // Используем iconCode
                       fontFamily: 'MaterialIcons',
                     ),
                     color: Color(
-                      item['colorValue'] ??
-                          (item['color'] is int ? item['color'] : 0xFF2196F3),
-                    ), // Обработка старого и нового формата
+                      item['colorValue'] == null || item['colorValue'] == 0 ? 0xFF9E9E9E : item['colorValue'], // Используем colorValue и серый по умолчанию
+                    ), 
                     isMain: item['isMain'] ?? false,
                     description: item['description'],
                   ),
@@ -220,8 +215,8 @@ class AccountsProvider with ChangeNotifier {
                 'accountType': account.accountType,
                 'balance': account.balance,
                 'currency': account.currency,
-                'icon': account.icon.codePoint,
-                'color': account.color.value,
+                'iconCode': account.icon.codePoint, // Используем iconCode
+                'colorValue': account.color.value,  // Используем colorValue
                 'isMain': account.isMain,
                 'description': account.description, // Добавляем это поле
               },
